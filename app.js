@@ -41,6 +41,27 @@ async function apiPost(action, data = {}) {
   return json.data;
 }
 
+/** 分頁讀取完整清單；若暫時連到不支援 offset 的舊後端，偵測重複頁後安全停止。 */
+async function fetchAllRecords() {
+  const pageSize = 200;
+  const all = [];
+  const seen = new Set();
+
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await apiGet({ action: 'list', limit: pageSize, offset });
+    let added = 0;
+    page.forEach((record) => {
+      if (seen.has(record.id)) return;
+      seen.add(record.id);
+      all.push(record);
+      added += 1;
+    });
+
+    if (page.length < pageSize || added === 0) break;
+  }
+  return all;
+}
+
 // ===== DOM 工具 =====
 const $ = (sel) => document.querySelector(sel);
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g,
@@ -59,7 +80,7 @@ function toast(msg) {
 async function loadList() {
   $('#list').innerHTML = '<p class="empty">載入中…</p>';
   try {
-    state.records = await apiGet({ action: 'list' });
+    state.records = await fetchAllRecords();
     renderTagChips();
     renderList();
   } catch (err) {
@@ -156,8 +177,10 @@ async function withBusy(fn, okMsg) {
     await fn();
     if (okMsg) toast(okMsg);
     await loadList();
+    return true;
   } catch (err) {
     toast(`失敗：${err.message}`);
+    return false;
   }
 }
 
@@ -267,15 +290,17 @@ async function batchCall(action, extra = {}) {
 async function batchApplyStatus() {
   if (!state.selected.size) { toast('尚未選取任何項目'); return; }
   const status = $('#batch-status').value;
-  await withBusy(() => batchCall('update', { status }), `已更新 ${state.selected.size} 筆`);
-  setBatch(false);
+  const count = state.selected.size;
+  const ok = await withBusy(() => batchCall('update', { status }), `已更新 ${count} 筆`);
+  if (ok) setBatch(false);
 }
 
 async function batchDelete() {
   if (!state.selected.size) { toast('尚未選取任何項目'); return; }
   if (!confirm(`刪除選取的 ${state.selected.size} 筆？（軟刪除，資料仍在試算表）`)) return;
-  await withBusy(() => batchCall('delete'), `已刪除 ${state.selected.size} 筆`);
-  setBatch(false);
+  const count = state.selected.size;
+  const ok = await withBusy(() => batchCall('delete'), `已刪除 ${count} 筆`);
+  if (ok) setBatch(false);
 }
 
 // ===== 設定面板 =====
