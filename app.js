@@ -13,6 +13,8 @@ const state = {
   important: false,
   urgent: false,
   filterTag: '',
+  batch: false,
+  selected: new Set(),
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -109,9 +111,12 @@ function renderList() {
       .map((t) => `<span class="item-tag">#${escapeHtml(t)}</span>`).join(' ');
     const statusOptions = Object.entries(STATUS_LABELS)
       .map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('');
+    const checkbox = state.batch
+      ? `<input type="checkbox" ${state.selected.has(r.id) ? 'checked' : ''} data-act="select">`
+      : `<input type="checkbox" ${done ? 'checked' : ''} data-act="toggle">`;
     return `
     <div class="item ${done ? 'done' : ''}" data-id="${r.id}">
-      <input type="checkbox" ${done ? 'checked' : ''} data-act="toggle">
+      ${checkbox}
       <div class="item-main">
         <div class="item-content">${escapeHtml(r.content)}</div>
         <div class="item-meta">
@@ -123,10 +128,11 @@ function renderList() {
           <span>${fmtDate(r.created_at)}</span>
         </div>
       </div>
+      ${state.batch ? '' : `
       <div class="item-actions">
         <button class="del-btn" data-act="delete" title="刪除">✕</button>
         <select data-act="status">${statusOptions}</select>
-      </div>
+      </div>`}
     </div>`;
   }).join('');
 }
@@ -161,7 +167,10 @@ function onListClick(e) {
   const id = item.dataset.id;
   const act = e.target.dataset.act;
 
-  if (act === 'toggle') {
+  if (act === 'select') {
+    if (e.target.checked) state.selected.add(id); else state.selected.delete(id);
+    updateBatchBar();
+  } else if (act === 'toggle') {
     const done = e.target.checked;
     withBusy(() => apiPost('update', { id, status: done ? 'done' : 'open' }), done ? '已完成 ✓' : '重新開啟');
   } else if (act === 'delete') {
@@ -227,6 +236,48 @@ async function save() {
   }
 }
 
+// ===== 批次操作 =====
+function setBatch(on) {
+  state.batch = on;
+  state.selected.clear();
+  $('#btn-batch').classList.toggle('on', on);
+  $('#batch-bar').hidden = !on;
+  updateBatchBar();
+  renderList();
+}
+
+function updateBatchBar() {
+  $('#batch-count').textContent = `已選 ${state.selected.size} 筆`;
+}
+
+/** 批次呼叫；後端若為未更新部署的舊版（不認 ids），自動退回逐筆執行 */
+async function batchCall(action, extra = {}) {
+  const ids = [...state.selected];
+  try {
+    await apiPost(action, { ids, ...extra });
+  } catch (err) {
+    if (/需要 id/.test(err.message)) {
+      for (const id of ids) await apiPost(action, { id, ...extra });
+    } else {
+      throw err;
+    }
+  }
+}
+
+async function batchApplyStatus() {
+  if (!state.selected.size) { toast('尚未選取任何項目'); return; }
+  const status = $('#batch-status').value;
+  await withBusy(() => batchCall('update', { status }), `已更新 ${state.selected.size} 筆`);
+  setBatch(false);
+}
+
+async function batchDelete() {
+  if (!state.selected.size) { toast('尚未選取任何項目'); return; }
+  if (!confirm(`刪除選取的 ${state.selected.size} 筆？（軟刪除，資料仍在試算表）`)) return;
+  await withBusy(() => batchCall('delete'), `已刪除 ${state.selected.size} 筆`);
+  setBatch(false);
+}
+
 // ===== 設定面板 =====
 function openSettings(hint) {
   $('#secret-input').value = getSecret();
@@ -270,6 +321,11 @@ function init() {
   $('#btn-undo').addEventListener('click', () => {
     if (confirm('撤回最後建立的一筆？')) withBusy(() => apiPost('undo'), '已撤回');
   });
+
+  $('#btn-batch').addEventListener('click', () => setBatch(!state.batch));
+  $('#btn-batch-apply').addEventListener('click', batchApplyStatus);
+  $('#btn-batch-delete').addEventListener('click', batchDelete);
+  $('#btn-batch-exit').addEventListener('click', () => setBatch(false));
 
   $('#search').addEventListener('input', renderList);
   $('#filter-type').addEventListener('change', renderList);

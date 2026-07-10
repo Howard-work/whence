@@ -32,6 +32,13 @@ header {
   padding: 8px 4px 14px;
 }
 header h1 { font-size: 22px; letter-spacing: 1px; color: var(--accent); }
+.tagline {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 3px;
+  margin-top: 2px;
+}
 .header-actions { display: flex; gap: 8px; }
 
 .icon-btn {
@@ -89,7 +96,9 @@ textarea { resize: vertical; }
 input::placeholder, textarea::placeholder { color: var(--muted); }
 
 .todo-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.todo-row input { flex: 1; min-width: 120px; margin-bottom: 10px; }
+.due-field { flex: 1; min-width: 130px; display: flex; flex-direction: column; }
+.field-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.due-field input { width: 100%; margin-bottom: 10px; }
 .flag-btn {
   padding: 9px 12px;
   border: 1px solid var(--card2);
@@ -119,6 +128,46 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .filter-bar { margin-bottom: 12px; }
 .filter-row { display: flex; gap: 8px; }
 .filter-row select { flex: 1; }
+.batch-toggle {
+  padding: 0 16px;
+  border: 1px solid var(--card2);
+  background: var(--card2);
+  color: var(--muted);
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.batch-toggle.on { border-color: var(--accent); color: var(--accent); font-weight: bold; }
+
+#batch-bar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card2);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 15;
+}
+#batch-count { font-size: 13px; color: var(--text); white-space: nowrap; }
+#batch-bar select { flex: 1; margin-bottom: 0; padding: 8px; font-size: 14px; }
+#batch-bar button {
+  border: none;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+}
+#btn-batch-apply { background: var(--accent); color: #12121a; }
+#btn-batch-delete { background: var(--danger); color: #12121a; }
+#btn-batch-exit { background: transparent; color: var(--muted); }
 
 .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
