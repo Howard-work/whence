@@ -4,10 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Whence — 見其所由，知其所至</title>
-  <meta name="theme-color" content="#12121a">
+  <meta name="theme-color" content="#0b1020">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icon-192.png">
-  <!-- iOS 加入主畫面 -->
   <link rel="apple-touch-icon" href="./icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,100 +14,139 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">跳到主要內容</a>
 
   <header>
     <div class="brand">
-      <h1>Whence</h1>
-      <span class="tagline">見其所由，知其所至</span>
+      <img class="brand-mark" src="./icon-192.png" width="40" height="40" alt="">
+      <div>
+        <h1>Whence</h1>
+        <span class="tagline">見其所由，知其所至</span>
+      </div>
     </div>
     <div class="header-actions">
-      <button id="btn-undo" class="icon-btn" title="撤回最後一筆">↩</button>
-      <button id="btn-refresh" class="icon-btn" title="重新整理">⟳</button>
-      <button id="btn-settings" class="icon-btn" title="設定">⚙</button>
+      <button type="button" id="btn-undo" class="icon-btn" aria-label="撤回最後建立的一筆" title="撤回最後建立的一筆">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 1 1-5.2 9"/></svg>
+      </button>
+      <button type="button" id="btn-refresh" class="icon-btn" aria-label="重新整理清單" title="重新整理清單">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
+      </button>
+      <button type="button" id="btn-settings" class="icon-btn" aria-label="開啟設定" title="設定">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M14 5v4M4 17h2M10 17h10M8 15v4"/></svg>
+      </button>
     </div>
   </header>
 
-  <!-- 輸入區 -->
-  <section class="card" id="input-card">
-    <div class="type-row">
-      <button class="type-btn active" data-type="note">記事</button>
-      <button class="type-btn" data-type="todo">待辦</button>
-      <button class="type-btn disabled" disabled title="Phase 2">行程</button>
-      <button class="type-btn disabled" disabled title="Phase 3">機況</button>
-    </div>
-
-    <textarea id="content" rows="3" placeholder="記下事情的來處…（速記符：! 重要、!! 重要且緊急）"></textarea>
-
-    <input id="tags" type="text" placeholder="標籤（逗號分隔，選填）" autocomplete="off">
-
-    <div class="todo-row" id="todo-options" hidden>
-      <button id="btn-important" class="flag-btn">★ 重要</button>
-      <button id="btn-urgent" class="flag-btn">⚡ 緊急</button>
-      <div class="due-field">
-        <span class="field-label">到期日（選填）</span>
-        <input id="due-date" type="date">
+  <main id="main-content">
+    <section class="card capture-card" id="input-card" aria-labelledby="capture-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">CAPTURE</p>
+          <h2 id="capture-title">快速記錄</h2>
+        </div>
+        <span class="section-hint">先記下，再整理</span>
       </div>
-      <div class="due-field">
-        <span class="field-label">時間（留空＝全天）</span>
-        <input id="due-time" type="time">
+
+      <div class="type-row" aria-label="記錄類型">
+        <button type="button" class="type-btn active" data-type="note" aria-pressed="true">記事</button>
+        <button type="button" class="type-btn" data-type="todo" aria-pressed="false">待辦</button>
+        <button type="button" class="type-btn disabled" disabled title="Phase 2">行程</button>
+        <button type="button" class="type-btn disabled" disabled title="Phase 3">機況</button>
       </div>
-    </div>
 
-    <button id="btn-save" class="save-btn">儲存</button>
-  </section>
+      <label class="field-label" for="content">內容</label>
+      <textarea id="content" rows="3" placeholder="記下事情的來處…（速記符：! 重要、!! 重要且緊急）"></textarea>
 
-  <!-- 篩選區 -->
-  <section class="filter-bar">
-    <input id="search" type="search" placeholder="搜尋內容或標籤…">
-    <div class="filter-row">
-      <select id="filter-type">
-        <option value="">全部類型</option>
-        <option value="note">記事</option>
-        <option value="todo">待辦</option>
-      </select>
-      <select id="filter-status">
-        <option value="">全部狀態</option>
-        <option value="open">待處理</option>
-        <option value="doing">進行中</option>
-        <option value="waiting">等待中</option>
-        <option value="done">完成</option>
-        <option value="cancelled">取消</option>
-      </select>
-      <button id="btn-batch" class="batch-toggle">批次</button>
-    </div>
-    <div id="tag-chips" class="tag-chips"></div>
-  </section>
+      <label class="field-label" for="tags">標籤 <span>選填，以逗號分隔</span></label>
+      <input id="tags" type="text" placeholder="例如：維修、原廠、追蹤" autocomplete="off">
 
-  <!-- 清單 -->
-  <section id="list"></section>
+      <div class="todo-row" id="todo-options" hidden>
+        <button type="button" id="btn-important" class="flag-btn" aria-pressed="false"><span aria-hidden="true">★</span> 重要</button>
+        <button type="button" id="btn-urgent" class="flag-btn" aria-pressed="false"><span aria-hidden="true">◆</span> 緊急</button>
+        <div class="due-field">
+          <label class="field-label" for="due-date">到期日 <span>選填</span></label>
+          <input id="due-date" type="date">
+        </div>
+        <div class="due-field">
+          <label class="field-label" for="due-time">時間 <span>留空＝全天</span></label>
+          <input id="due-time" type="time">
+        </div>
+      </div>
 
-  <!-- 設定面板 -->
-  <div id="settings-modal" class="modal" hidden>
+      <button type="button" id="btn-save" class="save-btn">儲存這筆記錄</button>
+    </section>
+
+    <section class="filter-bar" aria-labelledby="records-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">RECORDS</p>
+          <h2 id="records-title">最近記錄</h2>
+        </div>
+        <button type="button" id="btn-batch" class="batch-toggle" aria-pressed="false">批次管理</button>
+      </div>
+
+      <label class="sr-only" for="search">搜尋內容或標籤</label>
+      <input id="search" type="search" placeholder="搜尋內容或標籤…">
+      <div class="filter-row">
+        <label class="sr-only" for="filter-type">篩選類型</label>
+        <select id="filter-type">
+          <option value="">全部類型</option>
+          <option value="note">記事</option>
+          <option value="todo">待辦</option>
+        </select>
+        <label class="sr-only" for="filter-status">篩選狀態</label>
+        <select id="filter-status">
+          <option value="">全部狀態</option>
+          <option value="open">待處理</option>
+          <option value="doing">進行中</option>
+          <option value="waiting">等待中</option>
+          <option value="done">完成</option>
+          <option value="cancelled">取消</option>
+        </select>
+      </div>
+      <div id="tag-chips" class="tag-chips"></div>
+    </section>
+
+    <section id="list" aria-busy="false"></section>
+  </main>
+
+  <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
     <div class="modal-body card">
-      <h2>設定</h2>
-      <label>API Secret</label>
-      <input id="secret-input" type="password" placeholder="貼上 SECRET" autocomplete="off">
-      <button id="btn-save-secret" class="save-btn">儲存並連線</button>
-      <p class="hint" id="settings-hint"></p>
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow">CONNECTION</p>
+          <h2 id="settings-title">連線設定</h2>
+        </div>
+        <button type="button" id="btn-close-settings" class="icon-btn quiet" aria-label="關閉設定">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <p class="modal-copy">SECRET 只用來連接你的 GAS，記事資料仍以 Google Sheets 為準。</p>
+      <label class="field-label" for="secret-input">API Secret</label>
+      <div class="secret-row">
+        <input id="secret-input" type="password" placeholder="貼上 SECRET" autocomplete="off">
+        <button type="button" id="btn-toggle-secret" class="secondary-btn" aria-pressed="false">顯示</button>
+      </div>
+      <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
+      <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
 
-  <!-- 批次操作列 -->
-  <div id="batch-bar" hidden>
+  <div id="batch-bar" role="toolbar" aria-label="批次操作" hidden>
     <span id="batch-count">已選 0 筆</span>
-    <select id="batch-status">
+    <select id="batch-status" aria-label="要套用的狀態">
       <option value="open">待處理</option>
       <option value="doing">進行中</option>
       <option value="waiting">等待中</option>
       <option value="done">完成</option>
       <option value="cancelled">取消</option>
     </select>
-    <button id="btn-batch-apply">套用</button>
-    <button id="btn-batch-delete">刪除</button>
-    <button id="btn-batch-exit">✕</button>
+    <button type="button" id="btn-batch-apply">套用狀態</button>
+    <button type="button" id="btn-batch-delete">刪除</button>
+    <button type="button" id="btn-batch-exit" aria-label="離開批次模式">✕</button>
   </div>
 
-  <div id="toast" hidden></div>
+  <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
   <script src="./app.js"></script>
 </body>

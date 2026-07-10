@@ -78,6 +78,7 @@ function toast(msg) {
 
 // ===== 清單 =====
 async function loadList() {
+  $('#list').setAttribute('aria-busy', 'true');
   $('#list').innerHTML = '<p class="empty">載入中…</p>';
   try {
     state.records = await fetchAllRecords();
@@ -86,6 +87,8 @@ async function loadList() {
   } catch (err) {
     $('#list').innerHTML = `<p class="empty">載入失敗：${escapeHtml(err.message)}</p>`;
     if (String(err.message).includes('secret')) openSettings('請輸入正確的 SECRET');
+  } finally {
+    $('#list').setAttribute('aria-busy', 'false');
   }
 }
 
@@ -123,7 +126,7 @@ function fmtDue(r) {
 function renderList() {
   const rows = visibleRecords();
   if (!rows.length) {
-    $('#list').innerHTML = '<p class="empty">沒有資料</p>';
+    $('#list').innerHTML = '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
     return;
   }
   $('#list').innerHTML = rows.map((r) => {
@@ -133,8 +136,8 @@ function renderList() {
     const statusOptions = Object.entries(STATUS_LABELS)
       .map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('');
     const checkbox = state.batch
-      ? `<input type="checkbox" ${state.selected.has(r.id) ? 'checked' : ''} data-act="select">`
-      : `<input type="checkbox" ${done ? 'checked' : ''} data-act="toggle">`;
+      ? `<input type="checkbox" aria-label="選取：${escapeHtml(r.content)}" ${state.selected.has(r.id) ? 'checked' : ''} data-act="select">`
+      : `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} data-act="toggle">`;
     return `
     <div class="item ${done ? 'done' : ''}" data-id="${r.id}">
       ${checkbox}
@@ -145,14 +148,16 @@ function renderList() {
           ${r.important === 'Y' ? '<span class="badge important">重要</span>' : ''}
           ${r.urgent === 'Y' ? '<span class="badge urgent">緊急</span>' : ''}
           ${tags}
-          ${r.due_date ? `<span>⏰ ${fmtDue(r)}</span>` : ''}
+          ${r.due_date ? `<span class="due-meta">到期 ${fmtDue(r)}</span>` : ''}
           <span>${fmtDate(r.created_at)}</span>
         </div>
       </div>
       ${state.batch ? '' : `
       <div class="item-actions">
-        <button class="del-btn" data-act="delete" title="刪除">✕</button>
-        <select data-act="status">${statusOptions}</select>
+        <button type="button" class="del-btn" data-act="delete" aria-label="刪除：${escapeHtml(r.content)}" title="刪除">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-9 0 1 14h10l1-14M10 11v6m4-6v6"/></svg>
+        </button>
+        <select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態">${statusOptions}</select>
       </div>`}
     </div>`;
   }).join('');
@@ -188,13 +193,14 @@ function onListClick(e) {
   const item = e.target.closest('.item');
   if (!item) return;
   const id = item.dataset.id;
-  const act = e.target.dataset.act;
+  const control = e.target.closest('[data-act]');
+  const act = control?.dataset.act;
 
   if (act === 'select') {
-    if (e.target.checked) state.selected.add(id); else state.selected.delete(id);
+    if (control.checked) state.selected.add(id); else state.selected.delete(id);
     updateBatchBar();
   } else if (act === 'toggle') {
-    const done = e.target.checked;
+    const done = control.checked;
     withBusy(() => apiPost('update', { id, status: done ? 'done' : 'open' }), done ? '已完成 ✓' : '重新開啟');
   } else if (act === 'delete') {
     if (confirm('刪除這筆？（軟刪除，資料仍在試算表）')) {
@@ -214,8 +220,11 @@ function onListChange(e) {
 // ===== 輸入區 =====
 function setActiveType(type) {
   state.activeType = type;
-  document.querySelectorAll('.type-btn[data-type]').forEach((b) =>
-    b.classList.toggle('active', b.dataset.type === type));
+  document.querySelectorAll('.type-btn[data-type]').forEach((b) => {
+    const active = b.dataset.type === type;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
   $('#todo-options').hidden = type !== 'todo';
 }
 
@@ -240,6 +249,8 @@ async function save() {
 
   const btn = $('#btn-save');
   btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = '儲存中…';
   try {
     await apiPost('create', data);
     $('#content').value = '';
@@ -250,12 +261,15 @@ async function save() {
     state.urgent = false;
     $('#btn-important').classList.remove('on');
     $('#btn-urgent').classList.remove('on');
+    $('#btn-important').setAttribute('aria-pressed', 'false');
+    $('#btn-urgent').setAttribute('aria-pressed', 'false');
     toast('已儲存 ✓');
     await loadList();
   } catch (err) {
     toast(`儲存失敗：${err.message}`);
   } finally {
     btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 }
 
@@ -263,7 +277,9 @@ async function save() {
 function setBatch(on) {
   state.batch = on;
   state.selected.clear();
+  document.body.classList.toggle('batch-mode', on);
   $('#btn-batch').classList.toggle('on', on);
+  $('#btn-batch').setAttribute('aria-pressed', String(on));
   $('#batch-bar').hidden = !on;
   updateBatchBar();
   renderList();
@@ -305,9 +321,27 @@ async function batchDelete() {
 
 // ===== 設定面板 =====
 function openSettings(hint) {
-  $('#secret-input').value = getSecret();
+  const input = $('#secret-input');
+  input.value = getSecret();
+  input.type = 'password';
+  $('#btn-toggle-secret').textContent = '顯示';
+  $('#btn-toggle-secret').setAttribute('aria-pressed', 'false');
   $('#settings-hint').textContent = hint || '';
   $('#settings-modal').hidden = false;
+  input.focus();
+}
+
+function closeSettings() {
+  $('#settings-modal').hidden = true;
+  $('#btn-settings').focus();
+}
+
+function toggleSecretVisibility() {
+  const input = $('#secret-input');
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  $('#btn-toggle-secret').textContent = show ? '隱藏' : '顯示';
+  $('#btn-toggle-secret').setAttribute('aria-pressed', String(show));
 }
 
 async function saveSecret() {
@@ -333,15 +367,19 @@ function init() {
   $('#btn-important').addEventListener('click', () => {
     state.important = !state.important;
     $('#btn-important').classList.toggle('on', state.important);
+    $('#btn-important').setAttribute('aria-pressed', String(state.important));
   });
   $('#btn-urgent').addEventListener('click', () => {
     state.urgent = !state.urgent;
     $('#btn-urgent').classList.toggle('on', state.urgent);
+    $('#btn-urgent').setAttribute('aria-pressed', String(state.urgent));
   });
 
   $('#btn-save').addEventListener('click', save);
   $('#btn-refresh').addEventListener('click', loadList);
   $('#btn-settings').addEventListener('click', () => openSettings());
+  $('#btn-close-settings').addEventListener('click', closeSettings);
+  $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
   $('#btn-save-secret').addEventListener('click', saveSecret);
   $('#btn-undo').addEventListener('click', () => {
     if (confirm('撤回最後建立的一筆？')) withBusy(() => apiPost('undo'), '已撤回');
@@ -365,6 +403,13 @@ function init() {
 
   $('#list').addEventListener('click', onListClick);
   $('#list').addEventListener('change', onListChange);
+
+  $('#settings-modal').addEventListener('click', (e) => {
+    if (e.target === $('#settings-modal')) closeSettings();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#settings-modal').hidden) closeSettings();
+  });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
