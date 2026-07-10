@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>whence</title>
+  <meta name="theme-color" content="#12121a">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icon-192.png">
+  <!-- iOS 加入主畫面 -->
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="whence">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <header>
+    <h1>whence</h1>
+    <div class="header-actions">
+      <button id="btn-undo" class="icon-btn" title="撤回最後一筆">↩</button>
+      <button id="btn-refresh" class="icon-btn" title="重新整理">⟳</button>
+      <button id="btn-settings" class="icon-btn" title="設定">⚙</button>
+    </div>
+  </header>
+
+  <!-- 輸入區 -->
+  <section class="card" id="input-card">
+    <div class="type-row">
+      <button class="type-btn active" data-type="note">記事</button>
+      <button class="type-btn" data-type="todo">待辦</button>
+      <button class="type-btn disabled" disabled title="Phase 2">行程</button>
+      <button class="type-btn disabled" disabled title="Phase 3">機況</button>
+    </div>
+
+    <textarea id="content" rows="3" placeholder="記下事情的來處…（速記符：! 重要、!! 重要且緊急）"></textarea>
+
+    <input id="tags" type="text" placeholder="標籤（逗號分隔，選填）" autocomplete="off">
+
+    <div class="todo-row" id="todo-options" hidden>
+      <button id="btn-important" class="flag-btn">★ 重要</button>
+      <button id="btn-urgent" class="flag-btn">⚡ 緊急</button>
+      <input id="due-date" type="date" title="到期日">
+      <input id="due-time" type="time" title="時間（留空＝全天）">
+    </div>
+
+    <button id="btn-save" class="save-btn">儲存</button>
+  </section>
+
+  <!-- 篩選區 -->
+  <section class="filter-bar">
+    <input id="search" type="search" placeholder="搜尋內容或標籤…">
+    <div class="filter-row">
+      <select id="filter-type">
+        <option value="">全部類型</option>
+        <option value="note">記事</option>
+        <option value="todo">待辦</option>
+      </select>
+      <select id="filter-status">
+        <option value="">全部狀態</option>
+        <option value="open">待處理</option>
+        <option value="doing">進行中</option>
+        <option value="waiting">等待中</option>
+        <option value="done">完成</option>
+        <option value="cancelled">取消</option>
+      </select>
+    </div>
+    <div id="tag-chips" class="tag-chips"></div>
+  </section>
+
+  <!-- 清單 -->
+  <section id="list"></section>
+
+  <!-- 設定面板 -->
+  <div id="settings-modal" class="modal" hidden>
+    <div class="modal-body card">
+      <h2>設定</h2>
+      <label>API Secret</label>
+      <input id="secret-input" type="password" placeholder="貼上 SECRET" autocomplete="off">
+      <button id="btn-save-secret" class="save-btn">儲存並連線</button>
+      <p class="hint" id="settings-hint"></p>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
