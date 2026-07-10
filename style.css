@@ -21,7 +21,8 @@ body {
   font-family: "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
   max-width: 640px;
   margin: 0 auto;
-  padding: 12px 12px calc(24px + env(safe-area-inset-bottom));
+  /* iOS 全螢幕模式：避開狀態列（時間／電量）與底部手勢條 */
+  padding: calc(12px + env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom));
   -webkit-tap-highlight-color: transparent;
 }
 
