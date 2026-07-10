@@ -272,6 +272,68 @@ header h1 {
   font-weight: 450;
 }
 
+.photo-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+}
+
+.photo-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.photo-picker svg,
+.attachment-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.photo-help { color: var(--subtle); font-size: 12px; }
+
+.photo-preview {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 12px;
+  margin: -2px 0 14px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.photo-preview img {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.photo-preview strong,
+.photo-preview span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.photo-preview strong { color: var(--text); font-size: 13px; }
+.photo-preview span { margin-top: 3px; color: var(--subtle); font-size: 12px; }
+
 textarea,
 input[type="text"],
 input[type="search"],
@@ -511,6 +573,21 @@ textarea::placeholder { color: #7f8aa0; }
 .item-tag { color: #a9c4ff; }
 .due-meta { color: var(--warn); }
 
+.attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 3px 8px;
+  border: 1px solid rgba(130, 170, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(130, 170, 255, 0.1);
+  color: #a9c4ff;
+  font-size: 12px;
+}
+
+.attachment-btn svg { width: 15px; height: 15px; }
+
 .item-actions {
   display: flex;
   flex: 0 0 auto;
@@ -620,6 +697,17 @@ textarea::placeholder { color: #7f8aa0; }
   margin: 0 0 18px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.photo-modal .modal-body { max-width: 620px; }
+
+.photo-full-image {
+  display: block;
+  width: 100%;
+  max-height: 70dvh;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  object-fit: contain;
 }
 
 .secret-row {

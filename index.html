@@ -60,6 +60,25 @@
       <label class="field-label" for="tags">標籤 <span>選填，以逗號分隔</span></label>
       <input id="tags" type="text" placeholder="例如：維修、原廠、追蹤" autocomplete="off">
 
+      <div class="photo-field">
+        <input id="photo-input" class="sr-only" type="file" accept="image/*" capture="environment">
+        <label class="photo-picker" for="photo-input">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3v12H4Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          拍照或選取照片
+        </label>
+        <span class="photo-help">每筆 1 張，儲存前自動壓縮</span>
+      </div>
+      <div id="photo-preview" class="photo-preview" hidden>
+        <img id="photo-preview-image" alt="已選取照片預覽">
+        <div>
+          <strong id="photo-preview-name">已選取照片</strong>
+          <span id="photo-preview-size"></span>
+        </div>
+        <button type="button" id="btn-remove-photo" class="del-btn" aria-label="移除已選取照片">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+
       <div class="todo-row" id="todo-options" hidden>
         <button type="button" id="btn-important" class="flag-btn" aria-pressed="false"><span aria-hidden="true">★</span> 重要</button>
         <button type="button" id="btn-urgent" class="flag-btn" aria-pressed="false"><span aria-hidden="true">◆</span> 緊急</button>
@@ -129,6 +148,22 @@
       </div>
       <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <div id="photo-modal" class="modal photo-modal" role="dialog" aria-modal="true" aria-labelledby="photo-modal-title" hidden>
+    <div class="modal-body card">
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow">ATTACHMENT</p>
+          <h2 id="photo-modal-title">記事照片</h2>
+        </div>
+        <button type="button" id="btn-close-photo" class="icon-btn quiet" aria-label="關閉照片">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <p id="photo-loading" class="modal-copy">照片載入中…</p>
+      <img id="photo-full-image" class="photo-full-image" alt="記事附件照片" hidden>
     </div>
   </div>
 

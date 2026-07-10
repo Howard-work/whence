@@ -15,6 +15,9 @@ const state = {
   filterTag: '',
   batch: false,
   selected: new Set(),
+  attachment: null,
+  attachmentPreviewUrl: '',
+  photoBusy: false,
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -66,6 +69,17 @@ async function fetchAllRecords() {
 const $ = (sel) => document.querySelector(sel);
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function parseAttachments(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const value = JSON.parse(String(raw));
+    return Array.isArray(value) ? value : [];
+  } catch (_) {
+    return [];
+  }
+}
 
 let toastTimer;
 function toast(msg) {
@@ -135,6 +149,7 @@ function renderList() {
       .map((t) => `<span class="item-tag">#${escapeHtml(t)}</span>`).join(' ');
     const statusOptions = Object.entries(STATUS_LABELS)
       .map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('');
+    const attachment = parseAttachments(r.attachments)[0];
     const checkbox = state.batch
       ? `<input type="checkbox" aria-label="選取：${escapeHtml(r.content)}" ${state.selected.has(r.id) ? 'checked' : ''} data-act="select">`
       : `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} data-act="toggle">`;
@@ -149,6 +164,9 @@ function renderList() {
           ${r.urgent === 'Y' ? '<span class="badge urgent">緊急</span>' : ''}
           ${tags}
           ${r.due_date ? `<span class="due-meta">到期 ${fmtDue(r)}</span>` : ''}
+          ${attachment ? `<button type="button" class="attachment-btn" data-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" aria-label="查看「${escapeHtml(r.content)}」的照片">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3v12H4Z"/><circle cx="12" cy="13" r="3.5"/></svg> 照片
+          </button>` : ''}
           <span>${fmtDate(r.created_at)}</span>
         </div>
       </div>
@@ -208,6 +226,8 @@ function onListClick(e) {
     } else {
       e.preventDefault();
     }
+  } else if (act === 'attachment') {
+    openAttachment(control);
   }
 }
 
@@ -215,6 +235,121 @@ function onListChange(e) {
   const item = e.target.closest('.item');
   if (!item || e.target.dataset.act !== 'status') return;
   withBusy(() => apiPost('update', { id: item.dataset.id, status: e.target.value }), '狀態已更新');
+}
+
+// ===== 照片附件 =====
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error('照片讀取失敗'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('手機無法解碼這張照片'));
+    image.src = url;
+  });
+}
+
+async function compressPhoto(file) {
+  if (!file || !String(file.type).startsWith('image/')) throw new Error('請選擇照片檔案');
+  if (file.size > 25 * 1024 * 1024) throw new Error('原始照片超過 25 MB');
+
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImage(sourceUrl);
+    const maxSide = 1600;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+    if (!blob) throw new Error('照片壓縮失敗');
+    if (blob.size > 2 * 1024 * 1024) throw new Error('壓縮後仍超過 2 MB，請改用較小照片');
+    return {
+      data: await blobToBase64(blob),
+      mime_type: 'image/jpeg',
+      size: blob.size,
+      blob,
+    };
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+function clearSelectedPhoto() {
+  if (state.attachmentPreviewUrl) URL.revokeObjectURL(state.attachmentPreviewUrl);
+  state.attachment = null;
+  state.attachmentPreviewUrl = '';
+  $('#photo-input').value = '';
+  $('#photo-preview-image').removeAttribute('src');
+  $('#photo-preview').hidden = true;
+}
+
+async function handlePhotoSelection(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  state.photoBusy = true;
+  $('#btn-save').disabled = true;
+  toast('照片壓縮中…');
+  try {
+    clearSelectedPhoto();
+    const compressed = await compressPhoto(file);
+    state.attachmentPreviewUrl = URL.createObjectURL(compressed.blob);
+    state.attachment = {
+      data: compressed.data,
+      mime_type: compressed.mime_type,
+      size: compressed.size,
+    };
+    $('#photo-preview-image').src = state.attachmentPreviewUrl;
+    $('#photo-preview-name').textContent = file.name || '手機照片';
+    $('#photo-preview-size').textContent = `壓縮後 ${formatBytes(compressed.size)}`;
+    $('#photo-preview').hidden = false;
+    toast('照片已準備完成');
+  } catch (err) {
+    clearSelectedPhoto();
+    toast(`照片處理失敗：${err.message}`);
+  } finally {
+    state.photoBusy = false;
+    $('#btn-save').disabled = false;
+  }
+}
+
+let photoReturnFocus = null;
+async function openAttachment(trigger) {
+  const fileId = trigger.dataset.fileId;
+  photoReturnFocus = trigger;
+  $('#photo-modal').hidden = false;
+  $('#photo-loading').hidden = false;
+  $('#photo-loading').textContent = '照片載入中…';
+  $('#photo-full-image').hidden = true;
+  $('#btn-close-photo').focus();
+  try {
+    const attachment = await apiGet({ action: 'attachment', file_id: fileId });
+    $('#photo-full-image').src = `data:${attachment.mime_type};base64,${attachment.data}`;
+    $('#photo-full-image').hidden = false;
+    $('#photo-loading').hidden = true;
+  } catch (err) {
+    $('#photo-loading').textContent = `照片載入失敗：${err.message}`;
+  }
+}
+
+function closePhotoModal() {
+  $('#photo-modal').hidden = true;
+  $('#photo-full-image').removeAttribute('src');
+  if (photoReturnFocus) photoReturnFocus.focus();
 }
 
 // ===== 輸入區 =====
@@ -231,6 +366,7 @@ function setActiveType(type) {
 async function save() {
   const content = $('#content').value.trim();
   if (!content) { toast('內容不可為空'); return; }
+  if (state.photoBusy) { toast('照片仍在處理中，請稍候'); return; }
 
   const data = {
     type: state.activeType,
@@ -240,6 +376,7 @@ async function save() {
     urgent: state.urgent,
     source: 'manual',
   };
+  if (state.attachment) data.attachment = state.attachment;
   if (state.activeType === 'todo' && $('#due-date').value) {
     const date = $('#due-date').value;
     const time = $('#due-time').value;
@@ -257,6 +394,7 @@ async function save() {
     $('#tags').value = '';
     $('#due-date').value = '';
     $('#due-time').value = '';
+    clearSelectedPhoto();
     state.important = false;
     state.urgent = false;
     $('#btn-important').classList.remove('on');
@@ -376,10 +514,13 @@ function init() {
   });
 
   $('#btn-save').addEventListener('click', save);
+  $('#photo-input').addEventListener('change', handlePhotoSelection);
+  $('#btn-remove-photo').addEventListener('click', clearSelectedPhoto);
   $('#btn-refresh').addEventListener('click', loadList);
   $('#btn-settings').addEventListener('click', () => openSettings());
   $('#btn-close-settings').addEventListener('click', closeSettings);
   $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
+  $('#btn-close-photo').addEventListener('click', closePhotoModal);
   $('#btn-save-secret').addEventListener('click', saveSecret);
   $('#btn-undo').addEventListener('click', () => {
     if (confirm('撤回最後建立的一筆？')) withBusy(() => apiPost('undo'), '已撤回');
@@ -407,8 +548,13 @@ function init() {
   $('#settings-modal').addEventListener('click', (e) => {
     if (e.target === $('#settings-modal')) closeSettings();
   });
+  $('#photo-modal').addEventListener('click', (e) => {
+    if (e.target === $('#photo-modal')) closePhotoModal();
+  });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('#settings-modal').hidden) closeSettings();
+    if (e.key !== 'Escape') return;
+    if (!$('#photo-modal').hidden) closePhotoModal();
+    else if (!$('#settings-modal').hidden) closeSettings();
   });
 
   if ('serviceWorker' in navigator) {
