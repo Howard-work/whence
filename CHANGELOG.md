@@ -1,5 +1,10 @@
 # Whence Changelog
 
+## v0.6.2 — 2026-07-11
+
+- Moved equipment status and date-range controls into a collapsed advanced-filter section.
+- Added visible labels and an explanation for optional start/end dates on mobile.
+
 ## v0.6.1 — 2026-07-11
 
 - Added shared customer aliases without rewriting historical equipment records.

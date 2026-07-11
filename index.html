@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=0.6.1">
+  <link rel="stylesheet" href="./style.css?v=0.6.2">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -198,9 +198,9 @@
         <label class="field-label" for="equipment-customer-filter">客戶時間軸</label>
         <select id="equipment-customer-filter"><option value="">全部客戶</option></select>
         <button type="button" id="btn-customer-alias" class="secondary-btn" hidden>合併客戶名稱</button>
-        <label class="sr-only" for="equipment-machine-filter">單一設備時間線</label>
+        <label class="field-label" for="equipment-machine-filter">設備篩選</label>
         <select id="equipment-machine-filter"><option value="">全部設備</option></select>
-        <div class="equipment-timeline-filters"><select id="equipment-status-filter" aria-label="篩選設備狀態"><option value="">全部狀態</option><option value="resolved">已解決</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="recurring">持續發生</option><option value="paused">暫停處理</option></select><input id="equipment-date-from" type="date" aria-label="開始日期"><input id="equipment-date-to" type="date" aria-label="結束日期"></div>
+        <details class="equipment-filter-details"><summary>進階篩選 <span>狀態／日期</span></summary><p class="filter-help">日期可留空；填寫後只顯示該期間內的歷史紀錄。</p><div class="equipment-timeline-filters"><div><label class="field-label" for="equipment-status-filter">設備狀態</label><select id="equipment-status-filter"><option value="">全部狀態</option><option value="resolved">已解決</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="recurring">持續發生</option><option value="paused">暫停處理</option></select></div><div><label class="field-label" for="equipment-date-from">開始日期</label><input id="equipment-date-from" type="date"></div><div><label class="field-label" for="equipment-date-to">結束日期</label><input id="equipment-date-to" type="date"></div></div></details>
         <p id="equipment-timeline-context" class="timeline-context"></p>
         <section id="equipment-current-summary" class="equipment-current-summary" hidden></section>
       </section>
@@ -251,7 +251,7 @@
       <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
       <button type="button" id="btn-enable-notifications" class="secondary-btn">啟用通知紅點</button>
       <button type="button" id="btn-open-trash" class="secondary-btn">最近刪除</button>
-      <p id="app-version" class="hint">Whence v0.6.1</p>
+      <p id="app-version" class="hint">Whence v0.6.2</p>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
@@ -366,6 +366,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=0.6.1"></script>
+  <script src="./app.js?v=0.6.2"></script>
 </body>
 </html>

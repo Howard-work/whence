@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.6.1';
+const APP_VERSION = '0.6.2';
 
 // ===== 設定 =====
 const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1mh2iFpUKvVahDejUHfJoWQ0xc1lj8z6qeIh88jhSQVK5zw/exec';
@@ -1462,7 +1462,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.6.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.6.2').catch(() => {});
   }
 
   resetCalendarForm();
