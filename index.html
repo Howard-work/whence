@@ -45,7 +45,7 @@
           <p class="eyebrow">CAPTURE</p>
           <h2 id="capture-title">快速記錄</h2>
         </div>
-        <span class="section-hint">先記下，再整理</span>
+        <span class="section-hint">不是用來整理人生，而是用來不錯過任何值得留下的東西。</span>
       </div>
 
       <div class="type-row" aria-label="記錄種類">
@@ -166,6 +166,20 @@
         <textarea id="equipment-action" rows="2" placeholder="例如：清潔感測器後恢復"></textarea>
         <label class="field-label" for="equipment-tags">標籤 <span>選填</span></label>
         <input id="equipment-tags" type="text" autocomplete="off" placeholder="例如：UV、感測器">
+        <label class="field-label" for="equipment-occurred">發生時間</label>
+        <input id="equipment-occurred" type="datetime-local">
+        <label class="field-label" for="equipment-linked-kind">同時建立 <span>選填</span></label>
+        <select id="equipment-linked-kind">
+          <option value="">不建立</option><option value="note">記事</option><option value="task">待辦</option>
+        </select>
+        <div id="equipment-linked-fields" hidden>
+          <label class="field-label" for="equipment-linked-content">記事／待辦內容</label>
+          <input id="equipment-linked-content" type="text" autocomplete="off">
+          <div id="equipment-linked-task-due" hidden>
+            <label class="field-label" for="equipment-linked-due">待辦到期日 <span>選填</span></label>
+            <input id="equipment-linked-due" type="date">
+          </div>
+        </div>
         <div class="photo-field">
           <input id="equipment-photo-input" class="sr-only" type="file" accept="image/*">
           <label class="photo-picker" for="equipment-photo-input">拍照或選取照片</label>
@@ -177,6 +191,9 @@
         <div class="section-heading compact"><div><p class="eyebrow">HISTORY</p><h2 id="equipment-history-title">設備歷史</h2></div></div>
         <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
         <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、內容或標籤…">
+        <label class="sr-only" for="equipment-machine-filter">單一設備時間線</label>
+        <select id="equipment-machine-filter"><option value="">全部設備</option></select>
+        <p id="equipment-timeline-context" class="timeline-context"></p>
       </section>
       <section id="equipment-list" aria-busy="false"></section>
     </section>
@@ -260,6 +277,21 @@
       </div>
       <p id="edit-photo-status" class="hint"></p>
       <button type="button" id="btn-save-edit" class="save-btn">儲存修改</button>
+    </div>
+  </div>
+
+  <div id="equipment-edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="equipment-edit-title" hidden>
+    <div class="modal-body card edit-modal-body">
+      <div class="modal-heading"><h2 id="equipment-edit-title">編輯設備紀錄</h2><button type="button" id="btn-close-equipment-edit" class="icon-btn quiet" aria-label="關閉設備編輯">×</button></div>
+      <label class="field-label" for="equipment-edit-customer">客戶／地點</label><input id="equipment-edit-customer" type="text">
+      <label class="field-label" for="equipment-edit-machine">設備名稱</label><input id="equipment-edit-machine" type="text">
+      <label class="field-label" for="equipment-edit-description">發生什麼</label><textarea id="equipment-edit-description" rows="3"></textarea>
+      <label class="field-label" for="equipment-edit-action">做了什麼</label><textarea id="equipment-edit-action" rows="3"></textarea>
+      <label class="field-label" for="equipment-edit-tags">標籤</label><input id="equipment-edit-tags" type="text">
+      <label class="field-label" for="equipment-edit-occurred">發生時間</label><input id="equipment-edit-occurred" type="datetime-local">
+      <div class="edit-photo-field"><input id="equipment-edit-photo" class="sr-only" type="file" accept="image/*"><label class="photo-picker" for="equipment-edit-photo">新增／更換照片</label><button type="button" id="btn-remove-equipment-edit-photo" class="secondary-btn danger-text" hidden>移除照片</button></div>
+      <p id="equipment-edit-photo-status" class="hint"></p>
+      <button type="button" id="btn-save-equipment-edit" class="save-btn">儲存修改</button>
     </div>
   </div>
 
