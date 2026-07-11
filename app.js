@@ -114,7 +114,12 @@ async function loadList() {
   $('#list').setAttribute('aria-busy', 'true');
   $('#list').innerHTML = '<p class="empty">載入中…</p>';
   try {
-    state.records = await fetchAllRecords();
+    const [records, calendarRecords] = await Promise.all([
+      fetchAllRecords(),
+      apiGet({ action: 'calendar_list' }).catch(() => []),
+    ]);
+    state.records = records;
+    state.calendarRecords = calendarRecords;
     renderTagChips();
     renderSpaceOptions();
     renderList();
@@ -168,13 +173,8 @@ function fmtDue(r) {
   return `${base} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function renderList() {
-  const rows = visibleRecords();
-  if (!rows.length) {
-    $('#list').innerHTML = '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
-    return;
-  }
-  $('#list').innerHTML = rows.map((r) => {
+function renderRecordCards(rows) {
+  return rows.map((r) => {
     const kind = r.kind || (r.type === 'todo' ? 'task' : 'note');
     const done = r.status === 'done';
     const tags = String(r.tags || '').split(',').filter(Boolean)
@@ -225,6 +225,44 @@ function renderList() {
   }).join('');
 }
 
+function sameLocalDay(value, reference = new Date()) {
+  if (!value) return false;
+  const date = new Date(value);
+  return !isNaN(date) && date.getFullYear() === reference.getFullYear()
+    && date.getMonth() === reference.getMonth() && date.getDate() === reference.getDate();
+}
+
+function renderTodaySection(title, rows, emptyText) {
+  return `<section class="today-section"><div class="today-section-heading"><h3>${title}</h3><span>${rows.length}</span></div>${rows.length ? renderRecordCards(rows) : `<p class="today-empty">${emptyText}</p>`}</section>`;
+}
+
+function renderTodayCalendarSection() {
+  const rows = state.calendarRecords.filter((record) => sameLocalDay(record.start_time));
+  const cards = rows.map((record) => {
+    const start = new Date(record.start_time);
+    const time = record.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `<button type="button" class="today-calendar-item" data-today-calendar-id="${escapeHtml(record.id)}"><span>${escapeHtml(time)}</span><strong>${escapeHtml(record.title)}</strong>${record.location ? `<small>${escapeHtml(record.location)}</small>` : ''}</button>`;
+  }).join('');
+  return `<section class="today-section"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || '<p class="today-empty">今天沒有行程</p>'}</section>`;
+}
+
+function renderList() {
+  const rows = visibleRecords();
+  if (state.activeView === 'today') {
+    const due = rows.filter((record) => {
+      const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
+      return kind === 'task' && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
+    });
+    const dueIds = new Set(due.map((record) => record.id));
+    const created = rows.filter((record) => sameLocalDay(record.created_at) && !dueIds.has(record.id));
+    $('#list').innerHTML = renderTodayCalendarSection()
+      + renderTodaySection('今日到期', due, '今天沒有到期待辦')
+      + renderTodaySection('今日新增', created, '今天還沒有新增記錄');
+    return;
+  }
+  $('#list').innerHTML = rows.length ? renderRecordCards(rows) : '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
+}
+
 function renderTagChips() {
   const counts = {};
   state.records.forEach((r) => {
@@ -261,6 +299,12 @@ async function withBusy(fn, okMsg) {
 }
 
 function onListClick(e) {
+  const calendarItem = e.target.closest('[data-today-calendar-id]');
+  if (calendarItem) {
+    switchScreen('calendar');
+    editCalendar(calendarItem.dataset.todayCalendarId);
+    return;
+  }
   const item = e.target.closest('.item');
   if (!item) return;
   const id = item.dataset.id;
