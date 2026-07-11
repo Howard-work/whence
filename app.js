@@ -111,7 +111,6 @@ async function loadList() {
 
 function visibleRecords() {
   const kw = $('#search').value.trim().toLowerCase();
-  const fKind = $('#filter-kind').value;
   const fSpace = $('#filter-space').value;
   const fStatus = $('#filter-status').value;
   const today = new Date();
@@ -126,7 +125,6 @@ function visibleRecords() {
     if (state.activeView === 'today' && !isToday(r.created_at) && !isToday(r.due_date)) return false;
     if (['task', 'idea', 'note'].includes(state.activeView) && kind !== state.activeView) return false;
     if (state.activeView === 'task' && ['done', 'cancelled'].includes(r.status)) return false;
-    if (fKind && kind !== fKind) return false;
     if (fSpace && String(r.space || '') !== fSpace) return false;
     if (fStatus && r.status !== fStatus) return false;
     if (state.filterTag && !String(r.tags).split(',').includes(state.filterTag)) return false;
@@ -599,7 +597,6 @@ function init() {
   $('#btn-batch-exit').addEventListener('click', () => setBatch(false));
 
   $('#search').addEventListener('input', renderList);
-  $('#filter-kind').addEventListener('change', renderList);
   $('#filter-space').addEventListener('change', renderList);
   $('#filter-status').addEventListener('change', renderList);
   $('#tag-chips').addEventListener('click', (e) => {

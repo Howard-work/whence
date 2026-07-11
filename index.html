@@ -75,7 +75,7 @@
       <input id="tags" type="text" placeholder="例如：維修、原廠、追蹤" autocomplete="off">
 
       <div class="photo-field">
-        <input id="photo-input" class="sr-only" type="file" accept="image/*" capture="environment">
+        <input id="photo-input" class="sr-only" type="file" accept="image/*">
         <label class="photo-picker" for="photo-input">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3v12H4Z"/><circle cx="12" cy="13" r="3.5"/></svg>
           拍照或選取照片
@@ -131,13 +131,6 @@
       <label class="sr-only" for="search">搜尋內容或標籤</label>
       <input id="search" type="search" placeholder="搜尋內容或標籤…">
       <div class="filter-row">
-        <label class="sr-only" for="filter-kind">篩選種類</label>
-        <select id="filter-kind">
-          <option value="">全部種類</option>
-          <option value="note">記事</option>
-          <option value="idea">靈感</option>
-          <option value="task">待辦</option>
-        </select>
         <label class="sr-only" for="filter-space">篩選 Space</label>
         <select id="filter-space"><option value="">全部 Space</option></select>
         <label class="sr-only" for="filter-status">篩選狀態</label>
