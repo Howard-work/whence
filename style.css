@@ -671,6 +671,53 @@ textarea::placeholder { color: #7f8aa0; }
   gap: 6px;
 }
 
+.item-menu { position: relative; }
+
+.item-menu summary {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.item-menu summary::-webkit-details-marker { display: none; }
+.item-menu summary:hover { border-color: var(--border); background: var(--surface-raised); color: var(--text); }
+
+.item-menu-panel {
+  position: absolute;
+  z-index: 30;
+  top: 48px;
+  right: 0;
+  display: grid;
+  width: 148px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #182238;
+  box-shadow: 0 12px 28px rgba(3, 7, 15, 0.5);
+}
+
+.item-menu-panel button {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.item-menu-panel button:hover { background: var(--surface-strong); }
+.item-menu-panel .menu-delete { color: var(--danger); }
+
 .item-actions select {
   width: auto;
   min-width: 94px;

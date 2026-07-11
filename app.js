@@ -192,9 +192,15 @@ function renderList() {
       </div>
       ${state.batch ? '' : `
       <div class="item-actions">
-        <button type="button" class="del-btn" data-act="delete" aria-label="刪除：${escapeHtml(r.content)}" title="刪除">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-9 0 1 14h10l1-14M10 11v6m4-6v6"/></svg>
-        </button>
+        <details class="item-menu">
+          <summary aria-label="更多操作：${escapeHtml(r.content)}" title="更多操作">⋯</summary>
+          <div class="item-menu-panel">
+            ${kind !== 'note' ? '<button type="button" data-act="convert" data-kind="note">轉為記事</button>' : ''}
+            ${kind !== 'task' ? '<button type="button" data-act="convert" data-kind="task">轉為待辦</button>' : ''}
+            ${kind !== 'idea' ? '<button type="button" data-act="convert" data-kind="idea">轉為靈感</button>' : ''}
+            <button type="button" class="menu-delete" data-act="delete">刪除</button>
+          </div>
+        </details>
         ${kind === 'task' ? `<select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態">${statusOptions}</select>` : ''}
       </div>`}
     </div>`;
@@ -255,6 +261,10 @@ function onListClick(e) {
     } else {
       e.preventDefault();
     }
+  } else if (act === 'convert') {
+    const kind = control.dataset.kind;
+    const status = kind === 'task' ? 'open' : 'active';
+    withBusy(() => apiPost('update', { id, kind, status }), `已轉為${KIND_LABELS[kind]}`);
   } else if (act === 'attachment') {
     openAttachment(control);
   }
