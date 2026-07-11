@@ -1,5 +1,12 @@
 # Whence Changelog
 
+## v0.6.0 — 2026-07-11
+
+- Added customer-first unified timelines for equipment, records, and Whence calendar events.
+- Added customer, machine, equipment-state, and date-range filters.
+- Deduplicated records explicitly linked to equipment incidents.
+- Moved the equipment status badge under the upper-right timestamp and increased its prominence.
+
 ## v0.5.1 — 2026-07-11
 
 - Versioned PWA CSS, JavaScript, and service-worker URLs so mobile standalone mode cannot mix new HTML with stale rendering code.

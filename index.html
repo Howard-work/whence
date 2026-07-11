@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=0.5.1">
+  <link rel="stylesheet" href="./style.css?v=0.6.0">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -195,8 +195,11 @@
         <div class="section-heading compact"><div><p class="eyebrow">HISTORY</p><h2 id="equipment-history-title">設備歷史</h2></div></div>
         <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
         <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、狀態、內容或標籤…">
+        <label class="field-label" for="equipment-customer-filter">客戶時間軸</label>
+        <select id="equipment-customer-filter"><option value="">全部客戶</option></select>
         <label class="sr-only" for="equipment-machine-filter">單一設備時間線</label>
         <select id="equipment-machine-filter"><option value="">全部設備</option></select>
+        <div class="equipment-timeline-filters"><select id="equipment-status-filter" aria-label="篩選設備狀態"><option value="">全部狀態</option><option value="resolved">已解決</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="recurring">持續發生</option><option value="paused">暫停處理</option></select><input id="equipment-date-from" type="date" aria-label="開始日期"><input id="equipment-date-to" type="date" aria-label="結束日期"></div>
         <p id="equipment-timeline-context" class="timeline-context"></p>
       </section>
       <section id="equipment-list" aria-busy="false"></section>
@@ -360,6 +363,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=0.5.1"></script>
+  <script src="./app.js?v=0.6.0"></script>
 </body>
 </html>

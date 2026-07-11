@@ -2,7 +2,6 @@
 
 ## Next
 
-- Customer/equipment unified timeline.
 - Customer-name normalization and aliases.
 - Optional task-to-calendar update synchronization.
 - Visible app version and update notice.

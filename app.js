@@ -840,10 +840,22 @@ function equipmentMatchesKeyword(record, keyword) {
   return !keyword || [record.customer, record.machine, record.description, record.action_taken, record.tags, status.label].join(' ').toLowerCase().includes(keyword);
 }
 
+function customerKey(value) { return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+
+function renderEquipmentCustomerFilter() {
+  const selected = $('#equipment-customer-filter').value;
+  const customers = new Map();
+  state.equipmentRecords.forEach((record) => { const label = String(record.customer || '').trim(); const key = customerKey(label); if (key && !customers.has(key)) customers.set(key, label); });
+  $('#equipment-customer-filter').innerHTML = '<option value="">全部客戶</option>' + [...customers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`).join('');
+  if (customers.has(selected)) $('#equipment-customer-filter').value = selected;
+}
+
 function renderEquipmentMachineFilter() {
   const keyword = $('#equipment-search').value.trim().toLowerCase();
+  const statusFilter = $('#equipment-status-filter').value;
+  const customer = $('#equipment-customer-filter').value;
   const pairs = new Map();
-  state.equipmentRecords.filter((r) => equipmentMatchesKeyword(r, keyword)).forEach((r) => {
+  state.equipmentRecords.filter((r) => (!customer || customerKey(r.customer) === customer) && equipmentMatchesKeyword(r, keyword)).forEach((r) => {
     const customer = String(r.customer || '').trim();
     const machine = String(r.machine || '').trim();
     const key = JSON.stringify([customer.toLowerCase(), machine.toLowerCase()]);
@@ -858,12 +870,55 @@ function renderEquipmentMachineFilter() {
   if ([...$('#equipment-machine-filter').options].some((option) => option.value === selected)) $('#equipment-machine-filter').value = selected;
 }
 
-function renderEquipmentList() {
+function timelineDateAllowed(value) {
+  const time = new Date(value).getTime(); if (!isFinite(time)) return false;
+  const from = $('#equipment-date-from').value ? new Date(`${$('#equipment-date-from').value}T00:00:00`).getTime() : -Infinity;
+  const to = $('#equipment-date-to').value ? new Date(`${$('#equipment-date-to').value}T23:59:59`).getTime() : Infinity;
+  return time >= from && time <= to;
+}
+
+function renderCustomerTimeline(customer) {
   const keyword = $('#equipment-search').value.trim().toLowerCase();
+  const statusFilter = $('#equipment-status-filter').value;
+  const machineFilter = $('#equipment-machine-filter').value;
+  let pair = null; try { pair = machineFilter ? JSON.parse(machineFilter) : null; } catch (_) {}
+  const equipment = state.equipmentRecords.filter((record) => customerKey(record.customer) === customer)
+    .filter((record) => !pair || record.machine === pair[1])
+    .filter((record) => !statusFilter || (record.status === statusFilter || (record.status === 'active' && statusFilter === 'recurring')))
+    .filter((record) => equipmentMatchesKeyword(record, keyword) && timelineDateAllowed(record.occurred_at || record.created_at));
+  const equipmentIds = new Set(equipment.map((record) => record.id));
+  const linkedRecordIds = new Set(equipment.map((record) => record.linked_event_id).filter(Boolean));
+  const customerLabel = state.equipmentRecords.find((record) => customerKey(record.customer) === customer)?.customer || customer;
+  const customerText = customerLabel.toLowerCase();
+  const records = statusFilter ? [] : state.records.filter((record) => !linkedRecordIds.has(record.id) && (equipmentIds.has(record.equipment_id) || `${record.content} ${record.tags}`.toLowerCase().includes(customerText)))
+    .filter((record) => (!keyword || `${record.content} ${record.tags} ${record.space}`.toLowerCase().includes(keyword)) && timelineDateAllowed(record.created_at));
+  const recordIds = new Set(records.map((record) => record.id));
+  const calendar = statusFilter ? [] : state.calendarRecords.filter((record) => recordIds.has(record.linked_event_id) || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(customerText))
+    .filter((record) => (!keyword || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(keyword)) && timelineDateAllowed(record.start_time));
+  const items = equipment.map((data) => ({ type: 'equipment', date: data.occurred_at || data.created_at, data }))
+    .concat(records.map((data) => ({ type: data.kind || 'note', date: data.created_at, data })), calendar.map((data) => ({ type: 'calendar', date: data.start_time, data })))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  $('#equipment-timeline-context').textContent = `${customerLabel} · ${items.length} 筆相關紀錄`;
+  if (!items.length) { $('#equipment-list').innerHTML = '<div class="empty"><strong>沒有符合的客戶紀錄</strong><span>調整設備、狀態或日期範圍。</span></div>'; return; }
+  $('#equipment-list').innerHTML = items.map((item) => {
+    if (item.type === 'equipment') {
+      const r = item.data; const status = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring; const attachment = parseAttachments(r.attachments)[0];
+      return `<article class="customer-timeline-item type-equipment equipment-item" data-id="${escapeHtml(r.id)}"><div class="equipment-item-head"><div><span>設備 · ${escapeHtml(r.machine)}</span><strong>${escapeHtml(r.description)}</strong></div><div class="equipment-head-side"><time>${fmtDate(item.date)}</time><div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}<div class="item-meta">${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div><button type="button" class="equipment-edit" data-equipment-act="edit">編輯</button></article>`;
+    }
+    if (item.type === 'calendar') return `<article class="customer-timeline-item type-calendar"><div><span>行程</span><strong>${escapeHtml(item.data.title)}</strong></div><time>${fmtDate(item.date)}</time></article>`;
+    return `<article class="customer-timeline-item type-record"><div><span>${escapeHtml(KIND_LABELS[item.type] || '記錄')}</span><strong>${escapeHtml(item.data.content)}</strong></div><time>${fmtDate(item.date)}</time></article>`;
+  }).join('');
+}
+
+function renderEquipmentList() {
+  const customer = $('#equipment-customer-filter').value;
+  if (customer) { renderCustomerTimeline(customer); return; }
+  const keyword = $('#equipment-search').value.trim().toLowerCase();
+  const statusFilter = $('#equipment-status-filter').value;
   const machineFilter = $('#equipment-machine-filter').value;
   let pair = null;
   try { pair = machineFilter ? JSON.parse(machineFilter) : null; } catch (_) { pair = null; }
-  const rows = state.equipmentRecords.filter((r) => (!pair || (r.customer === pair[0] && r.machine === pair[1])) && equipmentMatchesKeyword(r, keyword));
+  const rows = state.equipmentRecords.filter((r) => (!pair || (r.customer === pair[0] && r.machine === pair[1])) && (!statusFilter || r.status === statusFilter || (r.status === 'active' && statusFilter === 'recurring')) && equipmentMatchesKeyword(r, keyword) && timelineDateAllowed(r.occurred_at || r.created_at));
   $('#equipment-timeline-context').textContent = `${pair ? `${pair[0] ? `${pair[0]} · ` : ''}${pair[1]} · ` : ''}${rows.length} 筆設備紀錄`;
   if (!rows.length) {
     $('#equipment-list').innerHTML = '<div class="empty"><strong>還沒有設備紀錄</strong><span>留下第一筆，下次就能從這裡回想。</span></div>';
@@ -874,8 +929,7 @@ function renderEquipmentList() {
     const equipmentStatus = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring;
     const tags = String(r.tags || '').split(',').filter(Boolean).map((tag) => `<span class="item-tag">#${escapeHtml(tag)}</span>`).join(' ');
     return `<article class="equipment-item" data-id="${escapeHtml(r.id)}">
-      <div class="equipment-item-head"><div><strong>${escapeHtml(r.customer || r.machine)}</strong>${r.customer && r.machine ? `<span>${escapeHtml(r.machine)}</span>` : ''}</div><time>${fmtDate(r.occurred_at || r.created_at)}</time></div>
-      <div class="equipment-status-badge status-${equipmentStatus.tone}"><span aria-hidden="true"></span>${equipmentStatus.label}</div>
+      <div class="equipment-item-head"><div><strong>${escapeHtml(r.customer || r.machine)}</strong>${r.customer && r.machine ? `<span>${escapeHtml(r.machine)}</span>` : ''}</div><div class="equipment-head-side"><time>${fmtDate(r.occurred_at || r.created_at)}</time><div class="equipment-status-badge status-${equipmentStatus.tone}"><span aria-hidden="true"></span>${equipmentStatus.label}</div></div></div>
       <p>${escapeHtml(r.description)}</p>
       ${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}
       <div class="item-meta">${tags}${r.linked_event_id ? '<span class="space-meta">已關聯記錄</span>' : ''}${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div>
@@ -888,8 +942,10 @@ function renderEquipmentList() {
 async function loadEquipment() {
   $('#equipment-list').setAttribute('aria-busy', 'true');
   try {
-    state.equipmentRecords = await apiGet({ action: 'equipment_list' });
+    const [equipmentRecords, records, calendarRecords] = await Promise.all([apiGet({ action: 'equipment_list' }), fetchAllRecords(), apiGet({ action: 'calendar_list' }).catch(() => [])]);
+    state.equipmentRecords = equipmentRecords; state.records = records; state.calendarRecords = calendarRecords;
     renderEquipmentSuggestions();
+    renderEquipmentCustomerFilter();
     renderEquipmentList();
   } catch (err) {
     $('#equipment-list').innerHTML = `<div class="empty">設備紀錄載入失敗：${escapeHtml(err.message)}</div>`;
@@ -1298,6 +1354,10 @@ function init() {
   $('#btn-save-equipment').addEventListener('click', saveEquipment);
   $('#equipment-search').addEventListener('input', () => { renderEquipmentMachineFilter(); renderEquipmentList(); });
   $('#equipment-machine-filter').addEventListener('change', renderEquipmentList);
+  $('#equipment-customer-filter').addEventListener('change', () => { renderEquipmentMachineFilter(); renderEquipmentList(); });
+  $('#equipment-status-filter').addEventListener('change', renderEquipmentList);
+  $('#equipment-date-from').addEventListener('change', renderEquipmentList);
+  $('#equipment-date-to').addEventListener('change', renderEquipmentList);
   $('#equipment-customer').addEventListener('input', renderEquipmentFormMachineSuggestions);
   $('#equipment-linked-kind').addEventListener('change', () => {
     const kind = $('#equipment-linked-kind').value;
@@ -1361,7 +1421,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.5.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.6.0').catch(() => {});
   }
 
   resetCalendarForm();
