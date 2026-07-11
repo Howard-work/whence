@@ -5,7 +5,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1
 
 const STATUS_LABELS = { active: '保留', open: '待處理', doing: '進行中', waiting: '等待中', done: '完成', cancelled: '取消' };
 const KIND_LABELS = { note: '記事', idea: '靈感', task: '待辦' };
-const VIEW_LABELS = { today: '今日', task: '待辦', idea: '靈感', note: '記事' };
+const VIEW_LABELS = { all: '全部', today: '今日', task: '待辦', idea: '靈感', note: '記事' };
 
 // ===== 狀態（資料真相在 Sheets，此處僅為視圖快取）=====
 const state = {
@@ -156,7 +156,7 @@ function visibleRecords() {
     if (state.activeView === 'task' && ['done', 'cancelled'].includes(r.status)) return false;
     if (fSpace && String(r.space || '') !== fSpace) return false;
     if (fStatus && r.status !== fStatus) return false;
-    if (state.filterTag && !String(r.tags).split(',').includes(state.filterTag)) return false;
+    if (state.filterTag && !String(r.tags).split(',').map((tag) => tag.trim().toLowerCase()).includes(state.filterTag)) return false;
     if (kw && !`${r.content} ${r.tags} ${r.space || ''}`.toLowerCase().includes(kw)) return false;
     return true;
   });
@@ -255,8 +255,8 @@ function renderTodayCalendarSection() {
 
 function renderList() {
   const keyword = $('#search').value.trim().toLowerCase();
-  $('#records-screen').classList.toggle('searching', !!keyword);
-  if (keyword) { renderGlobalSearch(keyword); return; }
+  $('#records-screen').classList.toggle('searching', !!keyword || !!state.filterTag);
+  if (keyword || state.filterTag) { renderGlobalSearch(keyword, state.filterTag); return; }
   const rows = visibleRecords();
   if (state.activeView === 'today') {
     const due = rows.filter((record) => {
@@ -277,12 +277,13 @@ function searchSection(title, html, count) {
   return `<section class="today-section search-section"><div class="today-section-heading"><h3>${title}</h3><span>${count}</span></div>${html || '<p class="today-empty">沒有符合結果</p>'}</section>`;
 }
 
-function renderGlobalSearch(keyword) {
+function renderGlobalSearch(keyword, filterTag = '') {
   const matches = (value) => String(value || '').toLowerCase().includes(keyword);
-  const records = state.records.filter((r) => matches(`${r.content} ${r.tags} ${r.space}`));
+  const hasTag = (record) => !filterTag || String(record.tags || '').split(',').map((tag) => tag.trim().toLowerCase()).includes(filterTag);
+  const records = state.records.filter((r) => matches(`${r.content} ${r.tags} ${r.space}`) && hasTag(r));
   const byKind = (kind) => records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === kind);
-  const equipment = state.equipmentRecords.filter((r) => matches(`${r.customer} ${r.machine} ${r.description} ${r.action_taken} ${r.tags}`));
-  const calendar = state.calendarRecords.filter((r) => matches(`${r.title} ${r.location} ${r.notes}`));
+  const equipment = state.equipmentRecords.filter((r) => matches(`${r.customer} ${r.machine} ${r.description} ${r.action_taken} ${r.tags}`) && hasTag(r));
+  const calendar = filterTag ? [] : state.calendarRecords.filter((r) => matches(`${r.title} ${r.location} ${r.notes}`));
   const equipmentHtml = equipment.map((r) => `<button type="button" class="search-result" data-search-equipment="${escapeHtml(r.id)}"><strong>${escapeHtml(r.customer || r.machine)}</strong><span>${escapeHtml(r.customer ? `${r.machine} · ${r.description}` : r.description)}</span></button>`).join('');
   const calendarHtml = calendar.map((r) => `<button type="button" class="search-result" data-search-calendar="${escapeHtml(r.id)}"><strong>${escapeHtml(r.title)}</strong><span>${fmtDate(r.start_time)}</span></button>`).join('');
   $('#list').innerHTML = searchSection('待辦', renderRecordCards(byKind('task')), byKind('task').length)
@@ -294,14 +295,15 @@ function renderGlobalSearch(keyword) {
 
 function renderTagChips() {
   const counts = {};
+  const labels = {};
   state.records.forEach((r) => {
-    String(r.tags || '').split(',').filter(Boolean)
-      .forEach((t) => { counts[t] = (counts[t] || 0) + 1; });
+    String(r.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean)
+      .forEach((tag) => { const key = tag.toLowerCase(); counts[key] = (counts[key] || 0) + 1; if (!labels[key]) labels[key] = tag; });
   });
-  const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 12);
+  const tags = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 8);
   if (state.filterTag && !tags.includes(state.filterTag)) tags.unshift(state.filterTag);
   $('#tag-chips').innerHTML = tags.map((t) =>
-    `<button class="chip ${state.filterTag === t ? 'on' : ''}" data-tag="${escapeHtml(t)}">#${escapeHtml(t)} (${counts[t] || 0})</button>`
+    `<button class="chip ${state.filterTag === t ? 'on' : ''}" data-tag="${escapeHtml(t)}">#${escapeHtml(labels[t] || t)} (${counts[t] || 0})</button>`
   ).join('');
 }
 
@@ -1272,7 +1274,7 @@ function init() {
   $('#tag-chips').addEventListener('click', (e) => {
     const tag = e.target.closest('.chip')?.dataset.tag;
     if (!tag) return;
-    state.filterTag = state.filterTag === tag ? '' : tag;
+    state.filterTag = state.filterTag === tag.toLowerCase() ? '' : tag.toLowerCase();
     renderTagChips();
     renderList();
   });

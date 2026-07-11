@@ -1,5 +1,12 @@
 # Whence Changelog
 
+## v0.4.1 — 2026-07-11
+
+- Added an All view so completed and cancelled tasks remain discoverable.
+- Tag chips now open global grouped results instead of inheriting the current view.
+- Limited visible frequent tags to eight.
+- Tag counts and filters are case-insensitive, merging variants such as demo and Demo.
+
 ## v0.4.0 — 2026-07-11
 
 - Consistent calendar month/list switching.
