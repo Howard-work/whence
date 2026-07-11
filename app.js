@@ -199,6 +199,7 @@ function renderList() {
           ${r.urgent === 'Y' ? '<span class="badge urgent">緊急</span>' : ''}
           ${tags}
           ${r.due_date ? `<span class="due-meta">到期 ${fmtDue(r)}</span>` : ''}
+          ${r.calendar_id ? '<span class="space-meta">已連結行程</span>' : ''}
           ${attachment ? `<button type="button" class="attachment-btn" data-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" aria-label="查看「${escapeHtml(r.content)}」的照片">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3v12H4Z"/><circle cx="12" cy="13" r="3.5"/></svg> 照片
           </button>` : ''}
@@ -214,6 +215,7 @@ function renderList() {
             ${kind !== 'note' ? '<button type="button" data-act="convert" data-kind="note">轉為記事</button>' : ''}
             ${kind !== 'task' ? '<button type="button" data-act="convert" data-kind="task">轉為待辦</button>' : ''}
             ${kind !== 'idea' ? '<button type="button" data-act="convert" data-kind="idea">轉為靈感</button>' : ''}
+            ${kind === 'task' ? `<button type="button" data-act="calendar">${r.calendar_id ? '開啟行程' : '加入行程'}</button>` : ''}
             <button type="button" class="menu-delete" data-act="delete">刪除</button>
           </div>
         </details>
@@ -283,6 +285,8 @@ function onListClick(e) {
     withBusy(() => apiPost('update', { id, kind, status }), `已轉為${KIND_LABELS[kind]}`);
   } else if (act === 'edit') {
     openEdit(id);
+  } else if (act === 'calendar') {
+    openTaskInCalendar(id);
   } else if (act === 'attachment') {
     openAttachment(control);
   }
@@ -921,6 +925,29 @@ function setCalendarDefaults() {
   const end = new Date(start.getTime() + 60 * 60 * 1000);
   $('#calendar-start').value = localDateTimeValue(start);
   $('#calendar-end').value = localDateTimeValue(end);
+}
+
+async function openTaskInCalendar(id) {
+  const task = state.records.find((record) => record.id === id);
+  if (!task) return;
+  switchScreen('calendar');
+  if (!state.calendarRecords.length) await loadCalendar();
+  if (task.calendar_id) {
+    const linked = state.calendarRecords.find((record) => record.id === task.calendar_id);
+    if (linked) { editCalendar(linked.id); return; }
+  }
+  resetCalendarForm();
+  $('#calendar-title-input').value = task.content || '';
+  $('#calendar-linked-task').value = task.id;
+  if (task.due_date) {
+    const due = new Date(task.due_date);
+    $('#calendar-all-day').checked = task.all_day === 'Y';
+    $('#calendar-end-wrap').hidden = task.all_day === 'Y';
+    $('#calendar-start').value = localDateTimeValue(due);
+    $('#calendar-end').value = localDateTimeValue(new Date(due.getTime() + 60 * 60 * 1000));
+  }
+  $('#calendar-title-input').focus();
+  toast('已帶入待辦，確認後儲存到行程');
 }
 
 function renderCalendarTaskOptions() {
