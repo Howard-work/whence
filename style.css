@@ -56,6 +56,7 @@ body.batch-mode main { padding-bottom: 88px; }
 #records-screen.searching > #list { order: 5; }
 .records-heading { margin: 0 2px 8px; }
 .records-heading .eyebrow { font-size: 11px; }
+.records-heading h2 { margin: 0; font-size: 19px; }
 
 button,
 input,
