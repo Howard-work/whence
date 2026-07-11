@@ -4,8 +4,14 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1mh2iFpUKvVahDejUHfJoWQ0xc1lj8z6qeIh88jhSQVK5zw/exec';
 
 const STATUS_LABELS = { active: '保留', open: '待處理', doing: '進行中', waiting: '等待中', done: '完成', cancelled: '取消' };
-const KIND_LABELS = { note: '記事', idea: '靈感', task: '待辦' };
-const VIEW_LABELS = { all: '全部', today: '今日', task: '待辦', idea: '靈感', note: '記事' };
+const KIND_LABELS = { note: '記事', idea: '札記', task: '待辦' };
+const VIEW_LABELS = { all: '全部', today: '今日', task: '待辦', idea: '札記', note: '記事' };
+const EQUIPMENT_STATUS = {
+  resolved: { label: '已解決', tone: 'resolved' }, watching: { label: '待觀察', tone: 'watching' },
+  waiting_parts: { label: '等料件', tone: 'waiting' }, waiting_customer: { label: '等客戶', tone: 'waiting' },
+  waiting_vendor: { label: '等原廠', tone: 'vendor' }, recurring: { label: '持續發生', tone: 'recurring' },
+  paused: { label: '暫停處理', tone: 'paused' }, active: { label: '持續發生', tone: 'recurring' },
+};
 
 // ===== 狀態（資料真相在 Sheets，此處僅為視圖快取）=====
 const state = {
@@ -221,7 +227,7 @@ function renderRecordCards(rows) {
             <button type="button" data-act="edit">編輯</button>
             ${kind !== 'note' ? '<button type="button" data-act="convert" data-kind="note">轉為記事</button>' : ''}
             ${kind !== 'task' ? '<button type="button" data-act="convert" data-kind="task">轉為待辦</button>' : ''}
-            ${kind !== 'idea' ? '<button type="button" data-act="convert" data-kind="idea">轉為靈感</button>' : ''}
+            ${kind !== 'idea' ? '<button type="button" data-act="convert" data-kind="idea">轉為札記</button>' : ''}
             ${kind === 'task' ? `<button type="button" data-act="calendar">${r.calendar_id ? '開啟行程' : '加入行程'}</button>` : ''}
             <button type="button" class="menu-delete" data-act="delete">刪除</button>
           </div>
@@ -282,13 +288,13 @@ function renderGlobalSearch(keyword, filterTag = '') {
   const hasTag = (record) => !filterTag || String(record.tags || '').split(',').map((tag) => tag.trim().toLowerCase()).includes(filterTag);
   const records = state.records.filter((r) => matches(`${r.content} ${r.tags} ${r.space}`) && hasTag(r));
   const byKind = (kind) => records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === kind);
-  const equipment = state.equipmentRecords.filter((r) => matches(`${r.customer} ${r.machine} ${r.description} ${r.action_taken} ${r.tags}`) && hasTag(r));
+  const equipment = state.equipmentRecords.filter((r) => matches(`${r.customer} ${r.machine} ${r.description} ${r.action_taken} ${r.tags} ${(EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring).label}`) && hasTag(r));
   const calendar = filterTag ? [] : state.calendarRecords.filter((r) => matches(`${r.title} ${r.location} ${r.notes}`));
   const equipmentHtml = equipment.map((r) => `<button type="button" class="search-result" data-search-equipment="${escapeHtml(r.id)}"><strong>${escapeHtml(r.customer || r.machine)}</strong><span>${escapeHtml(r.customer ? `${r.machine} · ${r.description}` : r.description)}</span></button>`).join('');
   const calendarHtml = calendar.map((r) => `<button type="button" class="search-result" data-search-calendar="${escapeHtml(r.id)}"><strong>${escapeHtml(r.title)}</strong><span>${fmtDate(r.start_time)}</span></button>`).join('');
   $('#list').innerHTML = searchSection('待辦', renderRecordCards(byKind('task')), byKind('task').length)
     + searchSection('記事', renderRecordCards(byKind('note')), byKind('note').length)
-    + searchSection('靈感', renderRecordCards(byKind('idea')), byKind('idea').length)
+    + searchSection('札記', renderRecordCards(byKind('idea')), byKind('idea').length)
     + searchSection('設備', equipmentHtml, equipment.length)
     + searchSection('行程', calendarHtml, calendar.length);
 }
@@ -830,7 +836,8 @@ function renderEquipmentFormMachineSuggestions() {
 }
 
 function equipmentMatchesKeyword(record, keyword) {
-  return !keyword || [record.customer, record.machine, record.description, record.action_taken, record.tags].join(' ').toLowerCase().includes(keyword);
+  const status = EQUIPMENT_STATUS[record.status] || EQUIPMENT_STATUS.recurring;
+  return !keyword || [record.customer, record.machine, record.description, record.action_taken, record.tags, status.label].join(' ').toLowerCase().includes(keyword);
 }
 
 function renderEquipmentMachineFilter() {
@@ -864,9 +871,11 @@ function renderEquipmentList() {
   }
   $('#equipment-list').innerHTML = rows.map((r) => {
     const attachment = parseAttachments(r.attachments)[0];
+    const equipmentStatus = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring;
     const tags = String(r.tags || '').split(',').filter(Boolean).map((tag) => `<span class="item-tag">#${escapeHtml(tag)}</span>`).join(' ');
     return `<article class="equipment-item" data-id="${escapeHtml(r.id)}">
       <div class="equipment-item-head"><div><strong>${escapeHtml(r.customer || r.machine)}</strong>${r.customer && r.machine ? `<span>${escapeHtml(r.machine)}</span>` : ''}</div><time>${fmtDate(r.occurred_at || r.created_at)}</time></div>
+      <div class="equipment-status-badge status-${equipmentStatus.tone}"><span aria-hidden="true"></span>${equipmentStatus.label}</div>
       <p>${escapeHtml(r.description)}</p>
       ${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}
       <div class="item-meta">${tags}${r.linked_event_id ? '<span class="space-meta">已關聯記錄</span>' : ''}${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div>
@@ -914,6 +923,7 @@ async function saveEquipment() {
     customer: $('#equipment-customer').value,
     machine, description,
     action_taken: $('#equipment-action').value,
+    status: $('#equipment-status').value,
     tags: $('#equipment-tags').value,
     occurred_at: new Date($('#equipment-occurred').value).toISOString(),
   };
@@ -969,6 +979,7 @@ function openEquipmentEdit(id) {
   $('#equipment-edit-machine').value = r.machine || '';
   $('#equipment-edit-description').value = r.description || '';
   $('#equipment-edit-action').value = r.action_taken || '';
+  $('#equipment-edit-status').value = r.status === 'active' ? 'recurring' : (r.status || 'recurring');
   $('#equipment-edit-tags').value = r.tags || '';
   $('#equipment-edit-occurred').value = toLocalDateTime(r.occurred_at || r.created_at);
   $('#equipment-edit-photo').value = '';
@@ -985,7 +996,7 @@ async function handleEquipmentEditPhoto(event) {
 }
 
 async function saveEquipmentEdit() {
-  const data = { id: state.equipmentEditingId, customer: $('#equipment-edit-customer').value, machine: $('#equipment-edit-machine').value, description: $('#equipment-edit-description').value, action_taken: $('#equipment-edit-action').value, tags: $('#equipment-edit-tags').value, occurred_at: new Date($('#equipment-edit-occurred').value).toISOString() };
+  const data = { id: state.equipmentEditingId, customer: $('#equipment-edit-customer').value, machine: $('#equipment-edit-machine').value, description: $('#equipment-edit-description').value, action_taken: $('#equipment-edit-action').value, status: $('#equipment-edit-status').value, tags: $('#equipment-edit-tags').value, occurred_at: new Date($('#equipment-edit-occurred').value).toISOString() };
   if (state.equipmentEditAttachment) data.attachment = { data: state.equipmentEditAttachment.data, mime_type: state.equipmentEditAttachment.mime_type };
   if (state.equipmentEditRemoveAttachment) data.remove_attachment = true;
   try { await apiPost('equipment_update', data); closeEquipmentEdit(); toast('設備紀錄已更新'); await loadEquipment(); }

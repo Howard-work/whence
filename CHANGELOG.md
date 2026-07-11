@@ -1,5 +1,11 @@
 # Whence Changelog
 
+## v0.5.0 — 2026-07-11
+
+- Added seven equipment states with compact color-dot badges.
+- Equipment and global search now match localized state labels.
+- Renamed the Idea presentation label to 札記 while retaining the compatible `idea` data kind.
+
 ## v0.4.1 — 2026-07-11
 
 - Added an All view so completed and cancelled tasks remain discoverable.

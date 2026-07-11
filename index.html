@@ -51,7 +51,7 @@
       <div class="type-row" aria-label="記錄種類">
         <button type="button" class="type-btn active" data-kind="note" aria-pressed="true">記事</button>
         <button type="button" class="type-btn" data-kind="task" aria-pressed="false">待辦</button>
-        <button type="button" class="type-btn" data-kind="idea" aria-pressed="false">靈感</button>
+        <button type="button" class="type-btn" data-kind="idea" aria-pressed="false">札記</button>
       </div>
 
       <label class="field-label" for="content">一句話</label>
@@ -116,7 +116,7 @@
       <button type="button" class="view-btn" data-view="all" aria-pressed="false">全部</button>
       <button type="button" class="view-btn active" data-view="today" aria-pressed="true">今日</button>
       <button type="button" class="view-btn" data-view="task" aria-pressed="false">待辦</button>
-      <button type="button" class="view-btn" data-view="idea" aria-pressed="false">靈感</button>
+      <button type="button" class="view-btn" data-view="idea" aria-pressed="false">札記</button>
       <button type="button" class="view-btn" data-view="note" aria-pressed="false">記事</button>
     </nav>
 
@@ -166,6 +166,8 @@
         <textarea id="equipment-description" rows="2" placeholder="簡短記下現象或問題"></textarea>
         <label class="field-label" for="equipment-action">做了什麼 <span>選填</span></label>
         <textarea id="equipment-action" rows="2" placeholder="例如：清潔感測器後恢復"></textarea>
+        <label class="field-label" for="equipment-status">目前狀態</label>
+        <select id="equipment-status"><option value="recurring">持續發生</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="resolved">已解決</option><option value="paused">暫停處理</option></select>
         <label class="field-label" for="equipment-tags">標籤 <span>選填</span></label>
         <input id="equipment-tags" type="text" autocomplete="off" placeholder="例如：UV、感測器">
         <label class="field-label" for="equipment-occurred">發生時間</label>
@@ -192,7 +194,7 @@
       <section class="filter-bar" aria-labelledby="equipment-history-title">
         <div class="section-heading compact"><div><p class="eyebrow">HISTORY</p><h2 id="equipment-history-title">設備歷史</h2></div></div>
         <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
-        <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、內容或標籤…">
+        <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、狀態、內容或標籤…">
         <label class="sr-only" for="equipment-machine-filter">單一設備時間線</label>
         <select id="equipment-machine-filter"><option value="">全部設備</option></select>
         <p id="equipment-timeline-context" class="timeline-context"></p>
@@ -251,7 +253,7 @@
   <div id="trash-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="trash-title" hidden>
     <div class="modal-body card">
       <div class="modal-heading"><div><p class="eyebrow">RECOVERY</p><h2 id="trash-title">最近刪除</h2></div><button type="button" id="btn-close-trash" class="icon-btn quiet" aria-label="關閉最近刪除">×</button></div>
-      <p class="modal-copy">可復原記事、待辦、靈感、設備紀錄與 Whence 行程。</p>
+      <p class="modal-copy">可復原記事、待辦、札記、設備紀錄與 Whence 行程。</p>
       <section id="trash-list" aria-busy="false"></section>
     </div>
   </div>
@@ -275,7 +277,7 @@
           <select id="edit-kind">
             <option value="note">記事</option>
             <option value="task">待辦</option>
-            <option value="idea">靈感</option>
+            <option value="idea">札記</option>
           </select>
         </div>
         <div>
@@ -317,6 +319,7 @@
       <label class="field-label" for="equipment-edit-machine">設備名稱</label><input id="equipment-edit-machine" type="text">
       <label class="field-label" for="equipment-edit-description">發生什麼</label><textarea id="equipment-edit-description" rows="3"></textarea>
       <label class="field-label" for="equipment-edit-action">做了什麼</label><textarea id="equipment-edit-action" rows="3"></textarea>
+      <label class="field-label" for="equipment-edit-status">目前狀態</label><select id="equipment-edit-status"><option value="recurring">持續發生</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="resolved">已解決</option><option value="paused">暫停處理</option></select>
       <label class="field-label" for="equipment-edit-tags">標籤</label><input id="equipment-edit-tags" type="text">
       <label class="field-label" for="equipment-edit-occurred">發生時間</label><input id="equipment-edit-occurred" type="datetime-local">
       <div class="edit-photo-field"><input id="equipment-edit-photo" class="sr-only" type="file" accept="image/*"><label class="photo-picker" for="equipment-edit-photo">新增／更換照片</label><button type="button" id="btn-remove-equipment-edit-photo" class="secondary-btn danger-text" hidden>移除照片</button></div>

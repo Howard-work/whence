@@ -562,6 +562,14 @@ textarea {
 .equipment-item-head strong, .equipment-item-head span { display: block; }
 .equipment-item-head strong { color: var(--text); font-size: 16px; }
 .equipment-item-head span, .equipment-item-head time { color: var(--subtle); font-size: 12px; }
+.equipment-status-badge { display: inline-flex; align-items: center; gap: 6px; width: fit-content; margin-top: 8px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.equipment-status-badge > span { width: 8px; height: 8px; border-radius: 50%; background: var(--subtle); }
+.equipment-status-badge.status-resolved > span { background: #67c96f; }
+.equipment-status-badge.status-watching > span { background: #e6c451; }
+.equipment-status-badge.status-waiting > span { background: #ee9a4a; }
+.equipment-status-badge.status-vendor > span { background: #65a7ff; }
+.equipment-status-badge.status-recurring > span { background: #ef6574; }
+.equipment-status-badge.status-paused > span { background: #aab1bf; }
 .equipment-item p { margin: 12px 0 8px; color: var(--text); overflow-wrap: anywhere; }
 .equipment-action { padding: 9px 10px; border-radius: 9px; background: var(--surface-raised); color: var(--muted); font-size: 14px; }
 .equipment-action span { margin-right: 8px; color: var(--ok); font-size: 12px; font-weight: 700; }
