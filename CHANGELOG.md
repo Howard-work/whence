@@ -1,5 +1,10 @@
 # Whence Changelog
 
+## v0.6.3 — 2026-07-11
+
+- Converted Records, Search, and Equipment History into consistent collapsible panels.
+- Search and tag actions automatically open the Records panel so results remain visible.
+
 ## v0.6.2 — 2026-07-11
 
 - Moved equipment status and date-range controls into a collapsed advanced-filter section.

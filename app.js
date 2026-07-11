@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.6.2';
+const APP_VERSION = '0.6.3';
 
 // ===== 設定 =====
 const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1mh2iFpUKvVahDejUHfJoWQ0xc1lj8z6qeIh88jhSQVK5zw/exec';
@@ -656,6 +656,7 @@ function setActiveKind(kind) {
 
 function setActiveView(view) {
   state.activeView = view;
+  $('#records-panel').open = true;
   document.querySelectorAll('.view-btn').forEach((button) => {
     const active = button.dataset.view === view;
     button.classList.toggle('active', active);
@@ -1375,13 +1376,14 @@ function init() {
   $('#btn-batch-delete').addEventListener('click', batchDelete);
   $('#btn-batch-exit').addEventListener('click', () => setBatch(false));
 
-  $('#search').addEventListener('input', renderList);
+  $('#search').addEventListener('input', () => { if ($('#search').value.trim()) $('#records-panel').open = true; renderList(); });
   $('#filter-space').addEventListener('change', renderList);
   $('#filter-status').addEventListener('change', renderList);
   $('#tag-chips').addEventListener('click', (e) => {
     const tag = e.target.closest('.chip')?.dataset.tag;
     if (!tag) return;
     state.filterTag = state.filterTag === tag.toLowerCase() ? '' : tag.toLowerCase();
+    if (state.filterTag) $('#records-panel').open = true;
     renderTagChips();
     renderList();
   });
@@ -1462,7 +1464,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.6.2').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.6.3').catch(() => {});
   }
 
   resetCalendarForm();

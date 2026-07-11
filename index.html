@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=0.6.2">
+  <link rel="stylesheet" href="./style.css?v=0.6.3">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -111,7 +111,9 @@
       <button type="button" id="btn-save" class="save-btn">儲存</button>
     </section>
 
-    <div class="records-heading"><p class="eyebrow">RECORDS</p><h2>紀錄清單</h2></div>
+    <details id="records-panel" class="collapsible-section" open>
+      <summary><span><small>RECORDS</small><strong>紀錄清單</strong></span></summary>
+      <div class="collapsible-body">
     <nav class="view-nav" aria-label="首頁檢視">
       <button type="button" class="view-btn" data-view="all" aria-pressed="false">全部</button>
       <button type="button" class="view-btn active" data-view="today" aria-pressed="true">今日</button>
@@ -119,15 +121,15 @@
       <button type="button" class="view-btn" data-view="idea" aria-pressed="false">札記</button>
       <button type="button" class="view-btn" data-view="note" aria-pressed="false">記事</button>
     </nav>
-
-    <section class="filter-bar" aria-labelledby="records-title">
-      <div class="section-heading compact">
-        <div>
-          <p class="eyebrow">SEARCH</p>
-          <h2 id="records-title">搜尋</h2>
-        </div>
-        <button type="button" id="btn-batch" class="batch-toggle" aria-pressed="false">批次管理</button>
+    <section id="list" aria-busy="false"></section>
       </div>
+    </details>
+
+    <details id="search-panel" class="collapsible-section">
+      <summary><span><small>SEARCH</small><strong id="records-title">搜尋</strong></span></summary>
+      <div class="collapsible-body">
+    <section class="filter-bar" aria-labelledby="records-title">
+      <button type="button" id="btn-batch" class="batch-toggle" aria-pressed="false">批次管理</button>
 
       <label class="sr-only" for="search">搜尋內容或標籤</label>
       <input id="search" type="search" placeholder="搜尋內容或標籤…">
@@ -146,8 +148,8 @@
       </div>
       <div id="tag-chips" class="tag-chips"></div>
     </section>
-
-    <section id="list" aria-busy="false"></section>
+      </div>
+    </details>
     </section>
 
     <section id="equipment-screen" class="app-screen" aria-labelledby="equipment-title" hidden>
@@ -191,8 +193,10 @@
         </div>
         <button type="button" id="btn-save-equipment" class="save-btn">儲存設備紀錄</button>
       </section>
+      <details id="equipment-history-panel" class="collapsible-section" open>
+        <summary><span><small>HISTORY</small><strong id="equipment-history-title">設備歷史</strong></span></summary>
+        <div class="collapsible-body">
       <section class="filter-bar" aria-labelledby="equipment-history-title">
-        <div class="section-heading compact"><div><p class="eyebrow">HISTORY</p><h2 id="equipment-history-title">設備歷史</h2></div></div>
         <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
         <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、狀態、內容或標籤…">
         <label class="field-label" for="equipment-customer-filter">客戶時間軸</label>
@@ -205,6 +209,8 @@
         <section id="equipment-current-summary" class="equipment-current-summary" hidden></section>
       </section>
       <section id="equipment-list" aria-busy="false"></section>
+        </div>
+      </details>
     </section>
     <section id="calendar-screen" class="app-screen" aria-labelledby="calendar-title" hidden>
       <section class="calendar-toolbar card"><div class="calendar-nav-row"><button type="button" id="calendar-prev" class="secondary-btn" aria-label="上個月">‹</button><h2 id="calendar-month-label"></h2><button type="button" id="calendar-next" class="secondary-btn" aria-label="下個月">›</button></div><div class="calendar-toolbar-actions"><button type="button" id="calendar-today" class="secondary-btn">今天</button><button type="button" id="calendar-view-month" class="secondary-btn active">月曆</button><button type="button" id="calendar-view-list" class="secondary-btn">清單</button><button type="button" id="calendar-add" class="save-btn">＋ 新增行程</button></div></section>
@@ -251,7 +257,7 @@
       <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
       <button type="button" id="btn-enable-notifications" class="secondary-btn">啟用通知紅點</button>
       <button type="button" id="btn-open-trash" class="secondary-btn">最近刪除</button>
-      <p id="app-version" class="hint">Whence v0.6.2</p>
+      <p id="app-version" class="hint">Whence v0.6.3</p>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
@@ -366,6 +372,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=0.6.2"></script>
+  <script src="./app.js?v=0.6.3"></script>
 </body>
 </html>
