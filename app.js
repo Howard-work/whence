@@ -36,6 +36,7 @@ const state = {
   equipmentEditAttachment: null,
   equipmentEditRemoveAttachment: false,
   equipmentEditHadAttachment: false,
+  calendarRecords: [],
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -117,6 +118,7 @@ async function loadList() {
     renderTagChips();
     renderSpaceOptions();
     renderList();
+    updateAppBadge();
   } catch (err) {
     $('#list').innerHTML = `<p class="empty">載入失敗：${escapeHtml(err.message)}</p>`;
     if (String(err.message).includes('secret')) openSettings('請輸入正確的 SECRET');
@@ -907,10 +909,109 @@ async function saveEquipmentEdit() {
   catch (err) { toast(`更新失敗：${err.message}`); }
 }
 
+function localDateTimeValue(date) {
+  const d = new Date(date);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setCalendarDefaults() {
+  const start = new Date();
+  start.setMinutes(Math.ceil(start.getMinutes() / 30) * 30, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  $('#calendar-start').value = localDateTimeValue(start);
+  $('#calendar-end').value = localDateTimeValue(end);
+}
+
+function renderCalendarTaskOptions() {
+  const current = $('#calendar-linked-task').value;
+  const tasks = state.records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === 'task' && !['done', 'cancelled'].includes(r.status));
+  $('#calendar-linked-task').innerHTML = '<option value="">不關聯</option>' + tasks.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.content)}</option>`).join('');
+  if (tasks.some((r) => r.id === current)) $('#calendar-linked-task').value = current;
+}
+
+async function loadCalendar() {
+  $('#calendar-list').setAttribute('aria-busy', 'true');
+  try {
+    if (!state.records.length) state.records = await fetchAllRecords();
+    state.calendarRecords = await apiGet({ action: 'calendar_list' });
+    renderCalendarTaskOptions();
+    renderCalendarList();
+    updateAppBadge();
+  } catch (err) {
+    $('#calendar-list').innerHTML = `<p class="empty">行程載入失敗：${escapeHtml(err.message)}</p>`;
+  } finally { $('#calendar-list').setAttribute('aria-busy', 'false'); }
+}
+
+function renderCalendarList() {
+  const kw = $('#calendar-search').value.trim().toLowerCase();
+  const rows = state.calendarRecords.filter((r) => !kw || `${r.title} ${r.location} ${r.notes}`.toLowerCase().includes(kw));
+  if (!rows.length) { $('#calendar-list').innerHTML = '<div class="empty"><strong>還沒有行程</strong><span>新增後會同步到 Google Calendar。</span></div>'; return; }
+  $('#calendar-list').innerHTML = rows.map((r) => {
+    const start = new Date(r.start_time);
+    const time = r.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const day = start.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' });
+    return `<article class="item calendar-item" data-id="${escapeHtml(r.id)}"><div class="calendar-item-time">${escapeHtml(day)}<br>${escapeHtml(time)}</div><div class="item-main"><div class="item-content">${escapeHtml(r.title)}</div><div class="item-meta">${r.location ? `<span>${escapeHtml(r.location)}</span>` : ''}${r.linked_event_id ? '<span class="space-meta">已關聯待辦</span>' : ''}<span>提前 ${escapeHtml(r.reminder_minutes || '0')} 分鐘</span></div></div><div class="calendar-item-actions"><button class="secondary-btn" data-calendar-act="edit">編輯</button><button class="del-btn" data-calendar-act="delete">刪除</button></div></article>`;
+  }).join('');
+}
+
+function calendarPayload() {
+  const allDay = $('#calendar-all-day').checked;
+  const startValue = $('#calendar-start').value;
+  const endValue = allDay ? startValue : $('#calendar-end').value;
+  if (!startValue || !endValue) throw new Error('請填寫行程時間');
+  return { title: $('#calendar-title-input').value.trim(), all_day: allDay, start_time: new Date(startValue).toISOString(), end_time: new Date(endValue).toISOString(), location: $('#calendar-location').value.trim(), notes: $('#calendar-notes').value.trim(), reminder_minutes: $('#calendar-reminder').value, linked_event_id: $('#calendar-linked-task').value };
+}
+
+function resetCalendarForm() {
+  $('#calendar-editing-id').value = '';
+  $('#calendar-title-input').value = ''; $('#calendar-location').value = ''; $('#calendar-notes').value = '';
+  $('#calendar-all-day').checked = false; $('#calendar-end-wrap').hidden = false; $('#calendar-reminder').value = '30'; $('#calendar-linked-task').value = '';
+  $('#btn-save-calendar').textContent = '儲存行程'; $('#btn-cancel-calendar-edit').hidden = true;
+  setCalendarDefaults();
+}
+
+async function saveCalendar() {
+  try {
+    const data = calendarPayload();
+    if (!data.title) throw new Error('請填寫行程名稱');
+    const id = $('#calendar-editing-id').value;
+    if (id) data.id = id;
+    await apiPost(id ? 'calendar_update' : 'calendar_create', data);
+    toast(id ? '行程已更新' : '行程已建立'); resetCalendarForm(); await loadCalendar();
+  } catch (err) { toast(err.message); }
+}
+
+function editCalendar(id) {
+  const r = state.calendarRecords.find((item) => item.id === id); if (!r) return;
+  $('#calendar-editing-id').value = r.id; $('#calendar-title-input').value = r.title || ''; $('#calendar-location').value = r.location || ''; $('#calendar-notes').value = r.notes || '';
+  $('#calendar-all-day').checked = r.all_day === 'Y'; $('#calendar-end-wrap').hidden = r.all_day === 'Y'; $('#calendar-start').value = localDateTimeValue(r.start_time); $('#calendar-end').value = localDateTimeValue(r.end_time); $('#calendar-reminder').value = String(r.reminder_minutes || '0'); $('#calendar-linked-task').value = r.linked_event_id || '';
+  $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function updateAppBadge() {
+  if (!navigator.setAppBadge) return;
+  const now = new Date();
+  const today = now.toDateString();
+  const due = state.records.filter((r) => (r.kind || '') === 'task' && !['done', 'cancelled'].includes(r.status) && r.due_date && new Date(r.due_date).toDateString() === today).length;
+  const schedule = state.calendarRecords.filter((r) => new Date(r.start_time).toDateString() === today).length;
+  const count = due + schedule;
+  count ? navigator.setAppBadge(count).catch(() => {}) : navigator.clearAppBadge?.().catch(() => {});
+}
+
+async function enableNotificationBadge() {
+  if (!('Notification' in window)) { toast('這台裝置不支援網頁通知'); return; }
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') { toast('未允許通知，無法顯示紅點'); return; }
+  updateAppBadge();
+  toast('通知紅點已啟用');
+}
+
 function switchScreen(screen, updateHash = true) {
-  state.activeScreen = screen === 'equipment' ? 'equipment' : 'records';
+  state.activeScreen = ['equipment', 'calendar'].includes(screen) ? screen : 'records';
   $('#records-screen').hidden = state.activeScreen !== 'records';
   $('#equipment-screen').hidden = state.activeScreen !== 'equipment';
+  $('#calendar-screen').hidden = state.activeScreen !== 'calendar';
   document.querySelectorAll('.app-nav-btn').forEach((button) => {
     const active = button.dataset.screen === state.activeScreen;
     button.classList.toggle('active', active);
@@ -918,6 +1019,7 @@ function switchScreen(screen, updateHash = true) {
   });
   if (updateHash) history.replaceState(null, '', `#${state.activeScreen}`);
   if (state.activeScreen === 'equipment' && getSecret()) loadEquipment();
+  if (state.activeScreen === 'calendar' && getSecret()) loadCalendar();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
@@ -948,7 +1050,7 @@ function init() {
   $('#btn-save').addEventListener('click', save);
   $('#photo-input').addEventListener('change', handlePhotoSelection);
   $('#btn-remove-photo').addEventListener('click', clearSelectedPhoto);
-  $('#btn-refresh').addEventListener('click', () => state.activeScreen === 'equipment' ? loadEquipment() : loadList());
+  $('#btn-refresh').addEventListener('click', () => state.activeScreen === 'equipment' ? loadEquipment() : state.activeScreen === 'calendar' ? loadCalendar() : loadList());
   $('#btn-settings').addEventListener('click', () => openSettings());
   $('#btn-close-settings').addEventListener('click', closeSettings);
   $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
@@ -967,6 +1069,7 @@ function init() {
     state.editUrgent = !state.editUrgent; state.editDirty = true; updateEditFlags();
   });
   $('#btn-save-secret').addEventListener('click', saveSecret);
+  $('#btn-enable-notifications').addEventListener('click', enableNotificationBadge);
   $('#btn-undo').addEventListener('click', () => {
     if (confirm('撤回最後建立的一筆？')) withBusy(() => apiPost('undo'), '已撤回');
   });
@@ -1020,6 +1123,16 @@ function init() {
         .catch((err) => toast(`刪除失敗：${err.message}`));
     }
   });
+  $('#calendar-all-day').addEventListener('change', () => { $('#calendar-end-wrap').hidden = $('#calendar-all-day').checked; });
+  $('#btn-save-calendar').addEventListener('click', saveCalendar);
+  $('#btn-cancel-calendar-edit').addEventListener('click', resetCalendarForm);
+  $('#calendar-search').addEventListener('input', renderCalendarList);
+  $('#calendar-list').addEventListener('click', (event) => {
+    const control = event.target.closest('[data-calendar-act]'); if (!control) return;
+    const id = control.closest('.calendar-item').dataset.id;
+    if (control.dataset.calendarAct === 'edit') editCalendar(id);
+    if (control.dataset.calendarAct === 'delete' && confirm('刪除這筆行程？Google Calendar 內的行程也會刪除。')) apiPost('calendar_delete', { id }).then(() => { toast('行程已刪除'); return loadCalendar(); }).catch((err) => toast(err.message));
+  });
 
   $('#settings-modal').addEventListener('click', (e) => {
     if (e.target === $('#settings-modal')) closeSettings();
@@ -1042,7 +1155,8 @@ function init() {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
-  const initialScreen = location.hash === '#equipment' ? 'equipment' : 'records';
+  resetCalendarForm();
+  const initialScreen = location.hash === '#equipment' ? 'equipment' : location.hash === '#calendar' ? 'calendar' : 'records';
   switchScreen(initialScreen, false);
   if (getSecret()) {
     if (initialScreen === 'records') loadList();

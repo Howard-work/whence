@@ -197,11 +197,27 @@
       </section>
       <section id="equipment-list" aria-busy="false"></section>
     </section>
+    <section id="calendar-screen" class="app-screen" aria-labelledby="calendar-title" hidden>
+      <section class="card calendar-capture">
+        <div class="section-heading"><div><p class="eyebrow">CALENDAR</p><h2 id="calendar-title">新增行程</h2></div><span class="section-hint">同步到獨立的 Whence 日曆</span></div>
+        <input id="calendar-editing-id" type="hidden">
+        <label class="field-label" for="calendar-title-input">行程名稱</label><input id="calendar-title-input" type="text" autocomplete="off" placeholder="例如：客戶現場檢查">
+        <label class="check-row"><input id="calendar-all-day" type="checkbox"> 全天行程</label>
+        <div class="calendar-time-grid"><div><label class="field-label" for="calendar-start">開始</label><input id="calendar-start" type="datetime-local"></div><div id="calendar-end-wrap"><label class="field-label" for="calendar-end">結束</label><input id="calendar-end" type="datetime-local"></div></div>
+        <label class="field-label" for="calendar-location">地點 <span>選填</span></label><input id="calendar-location" type="text" autocomplete="off">
+        <label class="field-label" for="calendar-notes">備註 <span>選填</span></label><textarea id="calendar-notes" rows="2"></textarea>
+        <div class="calendar-time-grid"><div><label class="field-label" for="calendar-reminder">提前提醒</label><select id="calendar-reminder"><option value="0">不提醒</option><option value="10">10 分鐘</option><option value="30" selected>30 分鐘</option><option value="60">1 小時</option><option value="1440">1 天</option></select></div><div><label class="field-label" for="calendar-linked-task">關聯待辦 <span>選填</span></label><select id="calendar-linked-task"><option value="">不關聯</option></select></div></div>
+        <div class="form-actions"><button type="button" id="btn-save-calendar" class="save-btn">儲存行程</button><button type="button" id="btn-cancel-calendar-edit" class="secondary-btn" hidden>取消編輯</button></div>
+      </section>
+      <section class="filter-bar" aria-labelledby="calendar-list-title"><div class="section-heading compact"><div><p class="eyebrow">SCHEDULE</p><h2 id="calendar-list-title">近期行程</h2></div></div><input id="calendar-search" type="search" aria-label="搜尋行程" placeholder="搜尋名稱、地點或備註"></section>
+      <section id="calendar-list" aria-busy="false"></section>
+    </section>
   </main>
 
   <nav class="app-nav" aria-label="主要功能">
     <button type="button" class="app-nav-btn active" data-screen="records" aria-pressed="true">記錄</button>
     <button type="button" class="app-nav-btn" data-screen="equipment" aria-pressed="false">設備</button>
+    <button type="button" class="app-nav-btn" data-screen="calendar" aria-pressed="false">行程</button>
   </nav>
 
   <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
@@ -222,6 +238,7 @@
         <button type="button" id="btn-toggle-secret" class="secondary-btn" aria-pressed="false">顯示</button>
       </div>
       <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
+      <button type="button" id="btn-enable-notifications" class="secondary-btn">啟用通知紅點</button>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
