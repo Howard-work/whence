@@ -1,5 +1,10 @@
 # Whence Changelog
 
+## v0.5.1 — 2026-07-11
+
+- Versioned PWA CSS, JavaScript, and service-worker URLs so mobile standalone mode cannot mix new HTML with stale rendering code.
+- Fixes missing equipment status badges after the v0.5.0 release.
+
 ## v0.5.0 — 2026-07-11
 
 - Added seven equipment states with compact color-dot badges.

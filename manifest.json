@@ -1,7 +1,7 @@
 {
   "name": "whence",
   "short_name": "whence",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "個人記事管理：捕捉、儲存、呈現、提醒",
   "start_url": "./",
   "scope": "./",

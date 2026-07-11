@@ -1361,7 +1361,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.5.1').catch(() => {});
   }
 
   resetCalendarForm();
