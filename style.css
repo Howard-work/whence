@@ -499,6 +499,7 @@ textarea {
 .calendar-nav-row h2 { margin: 0; font-size: 19px; }
 .calendar-toolbar-actions { margin-top: 10px; }
 .calendar-toolbar-actions .save-btn { margin: 0 0 0 auto; width: auto; }
+.calendar-toolbar-actions .secondary-btn.active { border-color: var(--accent); background: var(--surface-strong); color: var(--text); }
 .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .calendar-weekdays span { padding: 6px 0; color: var(--subtle); text-align: center; font-size: 12px; }
 .calendar-grid { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); }
@@ -514,6 +515,11 @@ textarea {
 .search-section { margin-top: 18px; }
 .search-result { display: flex; flex-direction: column; gap: 3px; width: 100%; min-height: 52px; margin-bottom: 8px; padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); text-align: left; }
 .search-result span { color: var(--muted); font-size: 13px; }
+.trash-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-soft); }
+.trash-item div { min-width: 0; }
+.trash-item strong, .trash-item span { display: block; }
+.trash-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trash-item span { margin-top: 3px; color: var(--muted); font-size: 12px; }
 
 @media (max-width: 520px) {
   .calendar-time-grid { grid-template-columns: 1fr; gap: 0; }

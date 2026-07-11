@@ -255,8 +255,8 @@ function renderTodayCalendarSection() {
 
 function renderList() {
   const keyword = $('#search').value.trim().toLowerCase();
-  $('#records-screen').classList.toggle('searching', state.activeView === 'today' && !!keyword);
-  if (state.activeView === 'today' && keyword) { renderGlobalSearch(keyword); return; }
+  $('#records-screen').classList.toggle('searching', !!keyword);
+  if (keyword) { renderGlobalSearch(keyword); return; }
   const rows = visibleRecords();
   if (state.activeView === 'today') {
     const due = rows.filter((record) => {
@@ -1014,6 +1014,7 @@ async function openTaskInCalendar(id) {
     if (linked) { editCalendar(linked.id); return; }
   }
   resetCalendarForm();
+  setCalendarView('month');
   $('#calendar-title-input').value = task.content || '';
   $('#calendar-linked-task').value = task.id;
   if (task.due_date) {
@@ -1095,7 +1096,7 @@ function renderCalendarList() {
     const start = new Date(r.start_time);
     const time = r.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     const day = start.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' });
-    return `<article class="item calendar-item" data-id="${escapeHtml(r.id)}"><div class="calendar-item-time">${escapeHtml(day)}<br>${escapeHtml(time)}</div><div class="item-main"><div class="item-content">${escapeHtml(r.title)}</div><div class="item-meta">${r.location ? `<span>${escapeHtml(r.location)}</span>` : ''}${r.linked_event_id ? '<span class="space-meta">已關聯待辦</span>' : ''}<span>提前 ${escapeHtml(r.reminder_minutes || '0')} 分鐘</span></div></div><div class="calendar-item-actions"><button class="secondary-btn" data-calendar-act="edit">編輯</button><button class="del-btn" data-calendar-act="delete">刪除</button></div></article>`;
+    return `<article class="item calendar-item" data-id="${escapeHtml(r.id)}"><div class="calendar-item-time">${escapeHtml(day)}<br>${escapeHtml(time)}</div><div class="item-main"><div class="item-content">${escapeHtml(r.title)}</div><div class="item-meta">${r.location ? `<span>${escapeHtml(r.location)}</span>` : ''}${r.linked_event_id ? '<span class="space-meta">已關聯待辦</span>' : ''}${r.read_only ? '<span class="space-meta">Google 日曆 · 唯讀</span>' : `<span>提前 ${escapeHtml(r.reminder_minutes || '0')} 分鐘</span>`}</div></div>${r.read_only ? '' : '<div class="calendar-item-actions"><button class="secondary-btn" data-calendar-act="edit">編輯</button><button class="del-btn" data-calendar-act="delete">刪除</button></div>'}</article>`;
   }).join('');
 }
 
@@ -1145,12 +1146,48 @@ function updateAppBadge() {
   count ? navigator.setAppBadge(count).catch(() => {}) : navigator.clearAppBadge?.().catch(() => {});
 }
 
+function setCalendarView(view) {
+  state.calendarView = view === 'list' ? 'list' : 'month';
+  const month = state.calendarView === 'month';
+  $('#calendar-month-view').hidden = !month;
+  $('#calendar-list-filter').hidden = month;
+  $('#calendar-list').hidden = month;
+  $('#calendar-view-month').classList.toggle('active', month);
+  $('#calendar-view-list').classList.toggle('active', !month);
+  $('#calendar-view-month').setAttribute('aria-pressed', String(month));
+  $('#calendar-view-list').setAttribute('aria-pressed', String(!month));
+}
+
 async function enableNotificationBadge() {
   if (!('Notification' in window)) { toast('這台裝置不支援網頁通知'); return; }
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') { toast('未允許通知，無法顯示紅點'); return; }
   updateAppBadge();
   toast('通知紅點已啟用');
+}
+
+const TRASH_TYPE_LABELS = { record: '記錄', equipment: '設備', calendar: '行程' };
+
+async function openTrash() {
+  closeSettings();
+  $('#trash-modal').hidden = false;
+  $('#trash-list').setAttribute('aria-busy', 'true');
+  $('#trash-list').innerHTML = '<p class="today-empty">載入中…</p>';
+  try {
+    const rows = await apiGet({ action: 'trash_list' });
+    $('#trash-list').innerHTML = rows.length ? rows.map((item) => `<article class="trash-item" data-trash-id="${escapeHtml(item.id)}" data-trash-type="${escapeHtml(item.entity_type)}"><div><strong>${escapeHtml(item.title || '未命名')}</strong><span>${escapeHtml(TRASH_TYPE_LABELS[item.entity_type] || item.entity_type)}${item.subtitle ? ` · ${escapeHtml(item.subtitle)}` : ''} · ${fmtDate(item.deleted_at)}</span></div><button type="button" class="secondary-btn" data-trash-act="restore">復原</button></article>`).join('') : '<p class="today-empty">最近沒有刪除的資料</p>';
+  } catch (err) { $('#trash-list').innerHTML = `<p class="today-empty">載入失敗：${escapeHtml(err.message)}</p>`; }
+  finally { $('#trash-list').setAttribute('aria-busy', 'false'); }
+}
+
+function closeTrash() { $('#trash-modal').hidden = true; }
+
+async function restoreTrashItem(item) {
+  const button = item.querySelector('[data-trash-act="restore"]'); button.disabled = true;
+  try {
+    await apiPost('trash_restore', { id: item.dataset.trashId, entity_type: item.dataset.trashType });
+    toast('資料已復原'); await openTrash();
+  } catch (err) { button.disabled = false; toast(`復原失敗：${err.message}`); }
 }
 
 function switchScreen(screen, updateHash = true) {
@@ -1216,6 +1253,10 @@ function init() {
   });
   $('#btn-save-secret').addEventListener('click', saveSecret);
   $('#btn-enable-notifications').addEventListener('click', enableNotificationBadge);
+  $('#btn-open-trash').addEventListener('click', openTrash);
+  $('#btn-close-trash').addEventListener('click', closeTrash);
+  $('#trash-list').addEventListener('click', (event) => { const button = event.target.closest('[data-trash-act="restore"]'); if (button) restoreTrashItem(button.closest('.trash-item')); });
+  $('#trash-modal').addEventListener('click', (event) => { if (event.target === $('#trash-modal')) closeTrash(); });
   $('#btn-undo').addEventListener('click', () => {
     if (confirm('撤回最後建立的一筆？')) withBusy(() => apiPost('undo'), '已撤回');
   });
@@ -1274,8 +1315,8 @@ function init() {
   $('#calendar-prev').addEventListener('click', () => moveCalendarMonth(-1));
   $('#calendar-next').addEventListener('click', () => moveCalendarMonth(1));
   $('#calendar-today').addEventListener('click', () => { state.calendarSelected = new Date(); state.calendarCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1); renderMonthCalendar(); });
-  $('#calendar-view-month').addEventListener('click', () => { $('#calendar-month-view').hidden = false; $('#calendar-list').hidden = true; });
-  $('#calendar-view-list').addEventListener('click', () => { $('#calendar-month-view').hidden = true; $('#calendar-list').hidden = false; });
+  $('#calendar-view-month').addEventListener('click', () => setCalendarView('month'));
+  $('#calendar-view-list').addEventListener('click', () => setCalendarView('list'));
   $('#calendar-grid').addEventListener('click', (event) => { const day = event.target.closest('[data-calendar-date]'); if (!day) return; state.calendarSelected = new Date(`${day.dataset.calendarDate}T12:00:00`); renderMonthCalendar(); });
   $('#calendar-day-list').addEventListener('click', (event) => { const eventButton = event.target.closest('[data-calendar-id]'); const taskButton = event.target.closest('[data-task-id]'); if (eventButton) editCalendar(eventButton.dataset.calendarId); if (taskButton) openTaskInCalendar(taskButton.dataset.taskId); });
   $('#btn-save-calendar').addEventListener('click', saveCalendar);
@@ -1300,6 +1341,7 @@ function init() {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!$('#equipment-edit-modal').hidden) closeEquipmentEdit();
+    else if (!$('#trash-modal').hidden) closeTrash();
     else if (!$('#edit-modal').hidden) closeEdit();
     else if (!$('#photo-modal').hidden) closePhotoModal();
     else if (!$('#settings-modal').hidden) closeSettings();
