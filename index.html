@@ -170,6 +170,52 @@
     </div>
   </div>
 
+  <div id="edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-title" hidden>
+    <div class="modal-body card edit-modal-body">
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow">EDIT</p>
+          <h2 id="edit-title">編輯記錄</h2>
+        </div>
+        <button type="button" id="btn-close-edit" class="icon-btn quiet" aria-label="關閉編輯">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <label class="field-label" for="edit-content">內容</label>
+      <textarea id="edit-content" rows="4"></textarea>
+      <div class="edit-grid">
+        <div>
+          <label class="field-label" for="edit-kind">Kind</label>
+          <select id="edit-kind">
+            <option value="note">記事</option>
+            <option value="task">待辦</option>
+            <option value="idea">靈感</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="edit-space">Space</label>
+          <input id="edit-space" type="text" list="space-suggestions" autocomplete="off">
+        </div>
+      </div>
+      <label class="field-label" for="edit-tags">標籤 <span>以逗號分隔</span></label>
+      <input id="edit-tags" type="text" autocomplete="off">
+      <div id="edit-task-options" class="todo-row" hidden>
+        <button type="button" id="edit-important" class="flag-btn" aria-pressed="false"><span aria-hidden="true">★</span> 重要</button>
+        <button type="button" id="edit-urgent" class="flag-btn" aria-pressed="false"><span aria-hidden="true">◆</span> 緊急</button>
+        <div class="due-field">
+          <label class="field-label" for="edit-due-date">到期日</label>
+          <input id="edit-due-date" type="date">
+        </div>
+        <div class="due-field">
+          <label class="field-label" for="edit-due-time">時間 <span>留空＝全天</span></label>
+          <input id="edit-due-time" type="time">
+        </div>
+      </div>
+      <p id="edit-photo-note" class="hint" hidden>這筆記錄的照片會保留；目前可從記錄卡片查看。</p>
+      <button type="button" id="btn-save-edit" class="save-btn">儲存修改</button>
+    </div>
+  </div>
+
   <div id="photo-modal" class="modal photo-modal" role="dialog" aria-modal="true" aria-labelledby="photo-modal-title" hidden>
     <div class="modal-body card">
       <div class="modal-heading">

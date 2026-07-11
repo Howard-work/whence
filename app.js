@@ -20,6 +20,10 @@ const state = {
   attachment: null,
   attachmentPreviewUrl: '',
   photoBusy: false,
+  editingId: '',
+  editDirty: false,
+  editImportant: false,
+  editUrgent: false,
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -195,6 +199,7 @@ function renderList() {
         <details class="item-menu">
           <summary aria-label="更多操作：${escapeHtml(r.content)}" title="更多操作">⋯</summary>
           <div class="item-menu-panel">
+            <button type="button" data-act="edit">編輯</button>
             ${kind !== 'note' ? '<button type="button" data-act="convert" data-kind="note">轉為記事</button>' : ''}
             ${kind !== 'task' ? '<button type="button" data-act="convert" data-kind="task">轉為待辦</button>' : ''}
             ${kind !== 'idea' ? '<button type="button" data-act="convert" data-kind="idea">轉為靈感</button>' : ''}
@@ -265,6 +270,8 @@ function onListClick(e) {
     const kind = control.dataset.kind;
     const status = kind === 'task' ? 'open' : 'active';
     withBusy(() => apiPost('update', { id, kind, status }), `已轉為${KIND_LABELS[kind]}`);
+  } else if (act === 'edit') {
+    openEdit(id);
   } else if (act === 'attachment') {
     openAttachment(control);
   }
@@ -389,6 +396,98 @@ function closePhotoModal() {
   $('#photo-modal').hidden = true;
   $('#photo-full-image').removeAttribute('src');
   if (photoReturnFocus) photoReturnFocus.focus();
+}
+
+function localDateParts(value) {
+  if (!value) return { date: '', time: '' };
+  const date = new Date(value);
+  if (isNaN(date)) return { date: '', time: '' };
+  const pad = (number) => String(number).padStart(2, '0');
+  return {
+    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  };
+}
+
+function updateEditKindUI() {
+  $('#edit-task-options').hidden = $('#edit-kind').value !== 'task';
+}
+
+function updateEditFlags() {
+  $('#edit-important').classList.toggle('on', state.editImportant);
+  $('#edit-urgent').classList.toggle('on', state.editUrgent);
+  $('#edit-important').setAttribute('aria-pressed', String(state.editImportant));
+  $('#edit-urgent').setAttribute('aria-pressed', String(state.editUrgent));
+}
+
+function openEdit(id) {
+  const record = state.records.find((item) => item.id === id);
+  if (!record) return;
+  const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
+  const due = localDateParts(record.due_date);
+  state.editingId = id;
+  state.editImportant = record.important === 'Y';
+  state.editUrgent = record.urgent === 'Y';
+  $('#edit-content').value = record.content || '';
+  $('#edit-kind').value = kind;
+  $('#edit-space').value = record.space || '';
+  $('#edit-tags').value = record.tags || '';
+  $('#edit-due-date').value = due.date;
+  $('#edit-due-time').value = record.all_day === 'Y' ? '' : due.time;
+  $('#edit-photo-note').hidden = parseAttachments(record.attachments).length === 0;
+  updateEditKindUI();
+  updateEditFlags();
+  state.editDirty = false;
+  $('#edit-modal').hidden = false;
+  $('#edit-content').focus();
+}
+
+function closeEdit(force = false) {
+  if (!force && state.editDirty && !confirm('放棄尚未儲存的修改？')) return;
+  $('#edit-modal').hidden = true;
+  state.editingId = '';
+  state.editDirty = false;
+}
+
+async function saveEdit() {
+  const record = state.records.find((item) => item.id === state.editingId);
+  const content = $('#edit-content').value.trim();
+  if (!record || !content) { toast('內容不可為空'); return; }
+  const previousKind = record.kind || (record.type === 'todo' ? 'task' : 'note');
+  const kind = $('#edit-kind').value;
+  const data = {
+    id: record.id,
+    content,
+    kind,
+    space: $('#edit-space').value,
+    tags: $('#edit-tags').value,
+    important: state.editImportant,
+    urgent: state.editUrgent,
+  };
+  if (kind !== previousKind) data.status = kind === 'task' ? 'open' : 'active';
+  if (kind === 'task' && $('#edit-due-date').value) {
+    const date = $('#edit-due-date').value;
+    const time = $('#edit-due-time').value;
+    data.due_date = time ? `${date}T${time}:00+08:00` : `${date}T00:00:00+08:00`;
+    data.all_day = !time;
+  } else {
+    data.due_date = '';
+    data.all_day = false;
+  }
+  const button = $('#btn-save-edit');
+  button.disabled = true;
+  button.textContent = '儲存中…';
+  try {
+    await apiPost('update', data);
+    closeEdit(true);
+    toast('修改已儲存');
+    await loadList();
+  } catch (err) {
+    toast(`儲存失敗：${err.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = '儲存修改';
+  }
 }
 
 // ===== 輸入區 =====
@@ -596,6 +695,17 @@ function init() {
   $('#btn-close-settings').addEventListener('click', closeSettings);
   $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
   $('#btn-close-photo').addEventListener('click', closePhotoModal);
+  $('#btn-close-edit').addEventListener('click', () => closeEdit());
+  $('#btn-save-edit').addEventListener('click', saveEdit);
+  $('#edit-kind').addEventListener('change', () => { state.editDirty = true; updateEditKindUI(); });
+  ['#edit-content', '#edit-space', '#edit-tags', '#edit-due-date', '#edit-due-time'].forEach((selector) =>
+    $(selector).addEventListener('input', () => { state.editDirty = true; }));
+  $('#edit-important').addEventListener('click', () => {
+    state.editImportant = !state.editImportant; state.editDirty = true; updateEditFlags();
+  });
+  $('#edit-urgent').addEventListener('click', () => {
+    state.editUrgent = !state.editUrgent; state.editDirty = true; updateEditFlags();
+  });
   $('#btn-save-secret').addEventListener('click', saveSecret);
   $('#btn-undo').addEventListener('click', () => {
     if (confirm('撤回最後建立的一筆？')) withBusy(() => apiPost('undo'), '已撤回');
@@ -626,9 +736,13 @@ function init() {
   $('#photo-modal').addEventListener('click', (e) => {
     if (e.target === $('#photo-modal')) closePhotoModal();
   });
+  $('#edit-modal').addEventListener('click', (e) => {
+    if (e.target === $('#edit-modal')) closeEdit();
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$('#photo-modal').hidden) closePhotoModal();
+    if (!$('#edit-modal').hidden) closeEdit();
+    else if (!$('#photo-modal').hidden) closePhotoModal();
     else if (!$('#settings-modal').hidden) closeSettings();
   });
 

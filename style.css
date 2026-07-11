@@ -823,6 +823,20 @@ textarea::placeholder { color: #7f8aa0; }
 
 .photo-modal .modal-body { max-width: 620px; }
 
+.edit-modal-body {
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.edit-grid > div { min-width: 0; }
+
 .photo-full-image {
   display: block;
   width: 100%;
@@ -902,6 +916,7 @@ textarea::placeholder { color: #7f8aa0; }
   .card { padding: 16px; }
   .type-row { gap: 6px; }
   .filter-row { grid-template-columns: 1fr 1fr; }
+  .edit-grid { grid-template-columns: 1fr; gap: 0; }
   .type-btn { font-size: 13px; }
   .section-hint { display: none; }
   .item { gap: 8px; padding: 11px; }
