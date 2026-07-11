@@ -1057,6 +1057,8 @@ textarea::placeholder { color: #7f8aa0; }
   .edit-grid { grid-template-columns: 1fr; gap: 0; }
   .type-btn { font-size: 13px; }
   .section-hint { display: none; }
+  .capture-card .section-heading { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .capture-card .section-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.55; white-space: normal; }
   .item { gap: 8px; padding: 11px; }
   .item input[type="checkbox"] { width: 44px; height: 44px; flex-basis: 44px; }
   .item-actions select { min-width: 88px; max-width: 96px; }

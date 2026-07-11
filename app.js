@@ -651,7 +651,7 @@ function setActiveView(view) {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
-  $('#records-title').textContent = VIEW_LABELS[view];
+  $('#records-title').textContent = '搜尋';
   renderList();
 }
 
