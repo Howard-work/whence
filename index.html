@@ -38,6 +38,7 @@
   </header>
 
   <main id="main-content">
+    <section id="records-screen" class="app-screen" aria-label="記錄">
     <section class="card capture-card" id="input-card" aria-labelledby="capture-title">
       <div class="section-heading">
         <div>
@@ -115,7 +116,6 @@
       <button type="button" class="view-btn" data-view="task" aria-pressed="false">待辦</button>
       <button type="button" class="view-btn" data-view="idea" aria-pressed="false">靈感</button>
       <button type="button" class="view-btn" data-view="note" aria-pressed="false">記事</button>
-      <button type="button" class="view-btn" data-view="machine" aria-pressed="false">機況</button>
     </nav>
 
     <section class="filter-bar" aria-labelledby="records-title">
@@ -146,7 +146,46 @@
     </section>
 
     <section id="list" aria-busy="false"></section>
+    </section>
+
+    <section id="equipment-screen" class="app-screen" aria-labelledby="equipment-title" hidden>
+      <section class="card equipment-capture">
+        <div class="section-heading">
+          <div><p class="eyebrow">EQUIPMENT</p><h2 id="equipment-title">設備紀錄</h2></div>
+          <span class="section-hint">留下發生過什麼</span>
+        </div>
+        <label class="field-label" for="equipment-customer">客戶／地點 <span>選填</span></label>
+        <input id="equipment-customer" type="text" list="equipment-customer-suggestions" autocomplete="off" placeholder="例如：中壢 A 廠">
+        <datalist id="equipment-customer-suggestions"></datalist>
+        <label class="field-label" for="equipment-machine">設備名稱</label>
+        <input id="equipment-machine" type="text" list="equipment-machine-suggestions" autocomplete="off" placeholder="例如：UV-01">
+        <datalist id="equipment-machine-suggestions"></datalist>
+        <label class="field-label" for="equipment-description">發生什麼</label>
+        <textarea id="equipment-description" rows="2" placeholder="簡短記下現象或問題"></textarea>
+        <label class="field-label" for="equipment-action">做了什麼 <span>選填</span></label>
+        <textarea id="equipment-action" rows="2" placeholder="例如：清潔感測器後恢復"></textarea>
+        <label class="field-label" for="equipment-tags">標籤 <span>選填</span></label>
+        <input id="equipment-tags" type="text" autocomplete="off" placeholder="例如：UV、感測器">
+        <div class="photo-field">
+          <input id="equipment-photo-input" class="sr-only" type="file" accept="image/*">
+          <label class="photo-picker" for="equipment-photo-input">拍照或選取照片</label>
+          <span id="equipment-photo-status" class="photo-help"></span>
+        </div>
+        <button type="button" id="btn-save-equipment" class="save-btn">儲存設備紀錄</button>
+      </section>
+      <section class="filter-bar" aria-labelledby="equipment-history-title">
+        <div class="section-heading compact"><div><p class="eyebrow">HISTORY</p><h2 id="equipment-history-title">設備歷史</h2></div></div>
+        <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
+        <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、內容或標籤…">
+      </section>
+      <section id="equipment-list" aria-busy="false"></section>
+    </section>
   </main>
+
+  <nav class="app-nav" aria-label="主要功能">
+    <button type="button" class="app-nav-btn active" data-screen="records" aria-pressed="true">記錄</button>
+    <button type="button" class="app-nav-btn" data-screen="equipment" aria-pressed="false">設備</button>
+  </nav>
 
   <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
     <div class="modal-body card">

@@ -5,7 +5,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1
 
 const STATUS_LABELS = { active: '保留', open: '待處理', doing: '進行中', waiting: '等待中', done: '完成', cancelled: '取消' };
 const KIND_LABELS = { note: '記事', idea: '靈感', task: '待辦' };
-const VIEW_LABELS = { today: '今日', task: '待辦', idea: '靈感', note: '記事', machine: '機況' };
+const VIEW_LABELS = { today: '今日', task: '待辦', idea: '靈感', note: '記事' };
 
 // ===== 狀態（資料真相在 Sheets，此處僅為視圖快取）=====
 const state = {
@@ -28,6 +28,10 @@ const state = {
   editRemoveAttachment: false,
   editHadAttachment: false,
   editPhotoBusy: false,
+  equipmentRecords: [],
+  equipmentAttachment: null,
+  equipmentPhotoBusy: false,
+  activeScreen: 'records',
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -129,7 +133,6 @@ function visibleRecords() {
   };
   return state.records.filter((r) => {
     const kind = r.kind || (r.type === 'todo' ? 'task' : 'note');
-    if (state.activeView === 'machine') return false;
     if (state.activeView === 'today' && !isToday(r.created_at) && !isToday(r.due_date)) return false;
     if (['task', 'idea', 'note'].includes(state.activeView) && kind !== state.activeView) return false;
     if (state.activeView === 'task' && ['done', 'cancelled'].includes(r.status)) return false;
@@ -162,9 +165,7 @@ function fmtDue(r) {
 function renderList() {
   const rows = visibleRecords();
   if (!rows.length) {
-    $('#list').innerHTML = state.activeView === 'machine'
-      ? '<div class="empty"><strong>機況模組尚未啟用</strong><span>它會保持獨立，不會成為第四種 Kind。</span></div>'
-      : '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
+    $('#list').innerHTML = '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
     return;
   }
   $('#list').innerHTML = rows.map((r) => {
@@ -387,7 +388,7 @@ async function openAttachment(trigger) {
   $('#photo-full-image').hidden = true;
   $('#btn-close-photo').focus();
   try {
-    const attachment = await apiGet({ action: 'attachment', file_id: fileId });
+    const attachment = await apiGet({ action: trigger.dataset.attachmentAction || 'attachment', file_id: fileId });
     $('#photo-full-image').src = `data:${attachment.mime_type};base64,${attachment.data}`;
     $('#photo-full-image').hidden = false;
     $('#photo-loading').hidden = true;
@@ -717,6 +718,103 @@ async function saveSecret() {
   }
 }
 
+// ===== 設備畫面 =====
+function renderEquipmentSuggestions() {
+  const customers = [...new Set(state.equipmentRecords.map((r) => r.customer).filter(Boolean))].sort();
+  const machines = [...new Set(state.equipmentRecords.map((r) => r.machine).filter(Boolean))].sort();
+  $('#equipment-customer-suggestions').innerHTML = customers.map((v) => `<option value="${escapeHtml(v)}"></option>`).join('');
+  $('#equipment-machine-suggestions').innerHTML = machines.map((v) => `<option value="${escapeHtml(v)}"></option>`).join('');
+}
+
+function renderEquipmentList() {
+  const keyword = $('#equipment-search').value.trim().toLowerCase();
+  const rows = state.equipmentRecords.filter((r) => !keyword || [r.customer, r.machine, r.description, r.action_taken, r.tags].join(' ').toLowerCase().includes(keyword));
+  if (!rows.length) {
+    $('#equipment-list').innerHTML = '<div class="empty"><strong>還沒有設備紀錄</strong><span>留下第一筆，下次就能從這裡回想。</span></div>';
+    return;
+  }
+  $('#equipment-list').innerHTML = rows.map((r) => {
+    const attachment = parseAttachments(r.attachments)[0];
+    const tags = String(r.tags || '').split(',').filter(Boolean).map((tag) => `<span class="item-tag">#${escapeHtml(tag)}</span>`).join(' ');
+    return `<article class="equipment-item" data-id="${escapeHtml(r.id)}">
+      <div class="equipment-item-head"><div><strong>${escapeHtml(r.machine)}</strong>${r.customer ? `<span>${escapeHtml(r.customer)}</span>` : ''}</div><time>${fmtDate(r.created_at)}</time></div>
+      <p>${escapeHtml(r.description)}</p>
+      ${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}
+      <div class="item-meta">${tags}${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div>
+      <button type="button" class="equipment-delete" data-equipment-act="delete" aria-label="刪除設備紀錄：${escapeHtml(r.machine)}">刪除</button>
+    </article>`;
+  }).join('');
+}
+
+async function loadEquipment() {
+  $('#equipment-list').setAttribute('aria-busy', 'true');
+  try {
+    state.equipmentRecords = await apiGet({ action: 'equipment_list' });
+    renderEquipmentSuggestions();
+    renderEquipmentList();
+  } catch (err) {
+    $('#equipment-list').innerHTML = `<div class="empty">設備紀錄載入失敗：${escapeHtml(err.message)}</div>`;
+  } finally {
+    $('#equipment-list').setAttribute('aria-busy', 'false');
+  }
+}
+
+async function handleEquipmentPhoto(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  state.equipmentPhotoBusy = true;
+  $('#equipment-photo-status').textContent = '照片處理中…';
+  try {
+    state.equipmentAttachment = await compressPhoto(file);
+    $('#equipment-photo-status').textContent = `已選 ${formatBytes(state.equipmentAttachment.size)}`;
+  } catch (err) {
+    state.equipmentAttachment = null;
+    $('#equipment-photo-input').value = '';
+    $('#equipment-photo-status').textContent = '';
+    toast(err.message);
+  } finally { state.equipmentPhotoBusy = false; }
+}
+
+async function saveEquipment() {
+  const machine = $('#equipment-machine').value.trim();
+  const description = $('#equipment-description').value.trim();
+  if (!machine || !description) { toast('請填寫設備名稱與發生什麼'); return; }
+  if (state.equipmentPhotoBusy) { toast('照片仍在處理中'); return; }
+  const data = {
+    customer: $('#equipment-customer').value,
+    machine, description,
+    action_taken: $('#equipment-action').value,
+    tags: $('#equipment-tags').value,
+  };
+  if (state.equipmentAttachment) data.attachment = { data: state.equipmentAttachment.data, mime_type: state.equipmentAttachment.mime_type };
+  const button = $('#btn-save-equipment');
+  button.disabled = true; button.textContent = '儲存中…';
+  try {
+    await apiPost('equipment_create', data);
+    ['#equipment-description', '#equipment-action', '#equipment-tags'].forEach((selector) => { $(selector).value = ''; });
+    state.equipmentAttachment = null;
+    $('#equipment-photo-input').value = '';
+    $('#equipment-photo-status').textContent = '';
+    toast('設備紀錄已儲存');
+    await loadEquipment();
+  } catch (err) { toast(`儲存失敗：${err.message}`); }
+  finally { button.disabled = false; button.textContent = '儲存設備紀錄'; }
+}
+
+function switchScreen(screen, updateHash = true) {
+  state.activeScreen = screen === 'equipment' ? 'equipment' : 'records';
+  $('#records-screen').hidden = state.activeScreen !== 'records';
+  $('#equipment-screen').hidden = state.activeScreen !== 'equipment';
+  document.querySelectorAll('.app-nav-btn').forEach((button) => {
+    const active = button.dataset.screen === state.activeScreen;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  if (updateHash) history.replaceState(null, '', `#${state.activeScreen}`);
+  if (state.activeScreen === 'equipment' && getSecret()) loadEquipment();
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
 // ===== 初始化 =====
 function init() {
   setActiveKind(KIND_LABELS[state.activeKind] ? state.activeKind : 'note');
@@ -744,7 +842,7 @@ function init() {
   $('#btn-save').addEventListener('click', save);
   $('#photo-input').addEventListener('change', handlePhotoSelection);
   $('#btn-remove-photo').addEventListener('click', clearSelectedPhoto);
-  $('#btn-refresh').addEventListener('click', loadList);
+  $('#btn-refresh').addEventListener('click', () => state.activeScreen === 'equipment' ? loadEquipment() : loadList());
   $('#btn-settings').addEventListener('click', () => openSettings());
   $('#btn-close-settings').addEventListener('click', closeSettings);
   $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
@@ -785,6 +883,22 @@ function init() {
 
   $('#list').addEventListener('click', onListClick);
   $('#list').addEventListener('change', onListChange);
+  document.querySelectorAll('.app-nav-btn').forEach((button) =>
+    button.addEventListener('click', () => switchScreen(button.dataset.screen)));
+  $('#equipment-photo-input').addEventListener('change', handleEquipmentPhoto);
+  $('#btn-save-equipment').addEventListener('click', saveEquipment);
+  $('#equipment-search').addEventListener('input', renderEquipmentList);
+  $('#equipment-list').addEventListener('click', (event) => {
+    const control = event.target.closest('[data-equipment-act]');
+    if (!control) return;
+    const item = control.closest('.equipment-item');
+    if (control.dataset.equipmentAct === 'attachment') openAttachment(control);
+    if (control.dataset.equipmentAct === 'delete' && confirm('刪除這筆設備紀錄？')) {
+      apiPost('equipment_delete', { id: item.dataset.id })
+        .then(() => { toast('設備紀錄已刪除'); return loadEquipment(); })
+        .catch((err) => toast(`刪除失敗：${err.message}`));
+    }
+  });
 
   $('#settings-modal').addEventListener('click', (e) => {
     if (e.target === $('#settings-modal')) closeSettings();
@@ -806,8 +920,10 @@ function init() {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
+  const initialScreen = location.hash === '#equipment' ? 'equipment' : 'records';
+  switchScreen(initialScreen, false);
   if (getSecret()) {
-    loadList();
+    if (initialScreen === 'records') loadList();
   } else {
     openSettings('第一次使用：貼上你在 GAS 指令碼屬性設定的 SECRET');
   }
