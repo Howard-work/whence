@@ -48,11 +48,14 @@ body {
 body.batch-mode main { padding-bottom: 88px; }
 #records-screen { display: flex; flex-direction: column; }
 #records-screen > .capture-card { order: 1; }
-#records-screen > .view-nav { order: 2; }
-#records-screen > #list { order: 3; }
-#records-screen > .filter-bar { order: 4; }
-#records-screen.searching > .filter-bar { order: 3; }
-#records-screen.searching > #list { order: 4; }
+#records-screen > .records-heading { order: 2; }
+#records-screen > .view-nav { order: 3; }
+#records-screen > #list { order: 4; }
+#records-screen > .filter-bar { order: 5; }
+#records-screen.searching > .filter-bar { order: 4; }
+#records-screen.searching > #list { order: 5; }
+.records-heading { margin: 0 2px 8px; }
+.records-heading .eyebrow { font-size: 11px; }
 
 button,
 input,

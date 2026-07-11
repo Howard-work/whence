@@ -283,7 +283,7 @@ function renderGlobalSearch(keyword) {
   const byKind = (kind) => records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === kind);
   const equipment = state.equipmentRecords.filter((r) => matches(`${r.customer} ${r.machine} ${r.description} ${r.action_taken} ${r.tags}`));
   const calendar = state.calendarRecords.filter((r) => matches(`${r.title} ${r.location} ${r.notes}`));
-  const equipmentHtml = equipment.map((r) => `<button type="button" class="search-result" data-search-equipment="${escapeHtml(r.id)}"><strong>${escapeHtml(r.machine)}</strong><span>${escapeHtml(r.customer || r.description)}</span></button>`).join('');
+  const equipmentHtml = equipment.map((r) => `<button type="button" class="search-result" data-search-equipment="${escapeHtml(r.id)}"><strong>${escapeHtml(r.customer || r.machine)}</strong><span>${escapeHtml(r.customer ? `${r.machine} · ${r.description}` : r.description)}</span></button>`).join('');
   const calendarHtml = calendar.map((r) => `<button type="button" class="search-result" data-search-calendar="${escapeHtml(r.id)}"><strong>${escapeHtml(r.title)}</strong><span>${fmtDate(r.start_time)}</span></button>`).join('');
   $('#list').innerHTML = searchSection('待辦', renderRecordCards(byKind('task')), byKind('task').length)
     + searchSection('記事', renderRecordCards(byKind('note')), byKind('note').length)
@@ -864,7 +864,7 @@ function renderEquipmentList() {
     const attachment = parseAttachments(r.attachments)[0];
     const tags = String(r.tags || '').split(',').filter(Boolean).map((tag) => `<span class="item-tag">#${escapeHtml(tag)}</span>`).join(' ');
     return `<article class="equipment-item" data-id="${escapeHtml(r.id)}">
-      <div class="equipment-item-head"><div><strong>${escapeHtml(r.machine)}</strong>${r.customer ? `<span>${escapeHtml(r.customer)}</span>` : ''}</div><time>${fmtDate(r.occurred_at || r.created_at)}</time></div>
+      <div class="equipment-item-head"><div><strong>${escapeHtml(r.customer || r.machine)}</strong>${r.customer && r.machine ? `<span>${escapeHtml(r.machine)}</span>` : ''}</div><time>${fmtDate(r.occurred_at || r.created_at)}</time></div>
       <p>${escapeHtml(r.description)}</p>
       ${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}
       <div class="item-meta">${tags}${r.linked_event_id ? '<span class="space-meta">已關聯記錄</span>' : ''}${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div>
