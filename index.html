@@ -47,15 +47,21 @@
         <span class="section-hint">先記下，再整理</span>
       </div>
 
-      <div class="type-row" aria-label="記錄類型">
-        <button type="button" class="type-btn active" data-type="note" aria-pressed="true">記事</button>
-        <button type="button" class="type-btn" data-type="todo" aria-pressed="false">待辦</button>
-        <button type="button" class="type-btn disabled" disabled title="Phase 2">行程</button>
-        <button type="button" class="type-btn disabled" disabled title="Phase 3">機況</button>
+      <div class="type-row" aria-label="記錄種類">
+        <button type="button" class="type-btn active" data-kind="note" aria-pressed="true">記事</button>
+        <button type="button" class="type-btn" data-kind="task" aria-pressed="false">待辦</button>
+        <button type="button" class="type-btn" data-kind="idea" aria-pressed="false">靈感</button>
       </div>
 
-      <label class="field-label" for="content">內容</label>
-      <textarea id="content" rows="3" placeholder="記下事情的來處…（速記符：! 重要、!! 重要且緊急）"></textarea>
+      <label class="field-label" for="content">一句話</label>
+      <textarea id="content" rows="2" placeholder="現在想留下什麼？"></textarea>
+
+      <details id="advanced-options" class="advanced-options">
+        <summary>更多選項 <span>Space、標籤、照片、日期</span></summary>
+        <div class="advanced-body">
+      <label class="field-label" for="space">Space <span>選填</span></label>
+      <input id="space" type="text" list="space-suggestions" placeholder="例如：工作、生活、閱讀" autocomplete="off">
+      <datalist id="space-suggestions"></datalist>
 
       <label class="field-label" for="tags">標籤 <span>選填，以逗號分隔</span></label>
       <input id="tags" type="text" placeholder="例如：維修、原廠、追蹤" autocomplete="off">
@@ -91,15 +97,25 @@
           <input id="due-time" type="time">
         </div>
       </div>
+        </div>
+      </details>
 
-      <button type="button" id="btn-save" class="save-btn">儲存這筆記錄</button>
+      <button type="button" id="btn-save" class="save-btn">儲存</button>
     </section>
+
+    <nav class="view-nav" aria-label="首頁檢視">
+      <button type="button" class="view-btn active" data-view="today" aria-pressed="true">今日</button>
+      <button type="button" class="view-btn" data-view="task" aria-pressed="false">待辦</button>
+      <button type="button" class="view-btn" data-view="idea" aria-pressed="false">靈感</button>
+      <button type="button" class="view-btn" data-view="note" aria-pressed="false">記事</button>
+      <button type="button" class="view-btn" data-view="machine" aria-pressed="false">機況</button>
+    </nav>
 
     <section class="filter-bar" aria-labelledby="records-title">
       <div class="section-heading compact">
         <div>
           <p class="eyebrow">RECORDS</p>
-          <h2 id="records-title">最近記錄</h2>
+          <h2 id="records-title">今日</h2>
         </div>
         <button type="button" id="btn-batch" class="batch-toggle" aria-pressed="false">批次管理</button>
       </div>
@@ -107,12 +123,15 @@
       <label class="sr-only" for="search">搜尋內容或標籤</label>
       <input id="search" type="search" placeholder="搜尋內容或標籤…">
       <div class="filter-row">
-        <label class="sr-only" for="filter-type">篩選類型</label>
-        <select id="filter-type">
-          <option value="">全部類型</option>
+        <label class="sr-only" for="filter-kind">篩選種類</label>
+        <select id="filter-kind">
+          <option value="">全部種類</option>
           <option value="note">記事</option>
-          <option value="todo">待辦</option>
+          <option value="idea">靈感</option>
+          <option value="task">待辦</option>
         </select>
+        <label class="sr-only" for="filter-space">篩選 Space</label>
+        <select id="filter-space"><option value="">全部 Space</option></select>
         <label class="sr-only" for="filter-status">篩選狀態</label>
         <select id="filter-status">
           <option value="">全部狀態</option>

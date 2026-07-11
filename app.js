@@ -3,13 +3,15 @@
 // ===== 設定 =====
 const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1mh2iFpUKvVahDejUHfJoWQ0xc1lj8z6qeIh88jhSQVK5zw/exec';
 
-const STATUS_LABELS = { open: '待處理', doing: '進行中', waiting: '等待中', done: '完成', cancelled: '取消' };
-const TYPE_LABELS = { note: '記事', todo: '待辦' };
+const STATUS_LABELS = { active: '保留', open: '待處理', doing: '進行中', waiting: '等待中', done: '完成', cancelled: '取消' };
+const KIND_LABELS = { note: '記事', idea: '靈感', task: '待辦' };
+const VIEW_LABELS = { today: '今日', task: '待辦', idea: '靈感', note: '記事', machine: '機況' };
 
 // ===== 狀態（資料真相在 Sheets，此處僅為視圖快取）=====
 const state = {
   records: [],
-  activeType: 'note',
+  activeKind: localStorage.getItem('whence_last_kind') || 'note',
+  activeView: 'today',
   important: false,
   urgent: false,
   filterTag: '',
@@ -97,6 +99,7 @@ async function loadList() {
   try {
     state.records = await fetchAllRecords();
     renderTagChips();
+    renderSpaceOptions();
     renderList();
   } catch (err) {
     $('#list').innerHTML = `<p class="empty">載入失敗：${escapeHtml(err.message)}</p>`;
@@ -108,13 +111,26 @@ async function loadList() {
 
 function visibleRecords() {
   const kw = $('#search').value.trim().toLowerCase();
-  const fType = $('#filter-type').value;
+  const fKind = $('#filter-kind').value;
+  const fSpace = $('#filter-space').value;
   const fStatus = $('#filter-status').value;
+  const today = new Date();
+  const isToday = (value) => {
+    const date = new Date(value);
+    return !isNaN(date) && date.getFullYear() === today.getFullYear()
+      && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+  };
   return state.records.filter((r) => {
-    if (fType && r.type !== fType) return false;
+    const kind = r.kind || (r.type === 'todo' ? 'task' : 'note');
+    if (state.activeView === 'machine') return false;
+    if (state.activeView === 'today' && !isToday(r.created_at) && !isToday(r.due_date)) return false;
+    if (['task', 'idea', 'note'].includes(state.activeView) && kind !== state.activeView) return false;
+    if (state.activeView === 'task' && ['done', 'cancelled'].includes(r.status)) return false;
+    if (fKind && kind !== fKind) return false;
+    if (fSpace && String(r.space || '') !== fSpace) return false;
     if (fStatus && r.status !== fStatus) return false;
     if (state.filterTag && !String(r.tags).split(',').includes(state.filterTag)) return false;
-    if (kw && !`${r.content} ${r.tags}`.toLowerCase().includes(kw)) return false;
+    if (kw && !`${r.content} ${r.tags} ${r.space || ''}`.toLowerCase().includes(kw)) return false;
     return true;
   });
 }
@@ -140,10 +156,13 @@ function fmtDue(r) {
 function renderList() {
   const rows = visibleRecords();
   if (!rows.length) {
-    $('#list').innerHTML = '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
+    $('#list').innerHTML = state.activeView === 'machine'
+      ? '<div class="empty"><strong>機況模組尚未啟用</strong><span>它會保持獨立，不會成為第四種 Kind。</span></div>'
+      : '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
     return;
   }
   $('#list').innerHTML = rows.map((r) => {
+    const kind = r.kind || (r.type === 'todo' ? 'task' : 'note');
     const done = r.status === 'done';
     const tags = String(r.tags || '').split(',').filter(Boolean)
       .map((t) => `<span class="item-tag">#${escapeHtml(t)}</span>`).join(' ');
@@ -152,14 +171,17 @@ function renderList() {
     const attachment = parseAttachments(r.attachments)[0];
     const checkbox = state.batch
       ? `<input type="checkbox" aria-label="選取：${escapeHtml(r.content)}" ${state.selected.has(r.id) ? 'checked' : ''} data-act="select">`
-      : `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} data-act="toggle">`;
+      : kind === 'task'
+        ? `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} data-act="toggle">`
+        : '<span class="kind-marker" aria-hidden="true"></span>';
     return `
     <div class="item ${done ? 'done' : ''}" data-id="${r.id}">
       ${checkbox}
       <div class="item-main">
         <div class="item-content">${escapeHtml(r.content)}</div>
         <div class="item-meta">
-          <span class="badge type-${r.type}">${TYPE_LABELS[r.type] || r.type}</span>
+          <span class="badge kind-${kind}">${KIND_LABELS[kind] || kind}</span>
+          ${r.space ? `<span class="space-meta">${escapeHtml(r.space)}</span>` : ''}
           ${r.important === 'Y' ? '<span class="badge important">重要</span>' : ''}
           ${r.urgent === 'Y' ? '<span class="badge urgent">緊急</span>' : ''}
           ${tags}
@@ -175,7 +197,7 @@ function renderList() {
         <button type="button" class="del-btn" data-act="delete" aria-label="刪除：${escapeHtml(r.content)}" title="刪除">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-9 0 1 14h10l1-14M10 11v6m4-6v6"/></svg>
         </button>
-        <select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態">${statusOptions}</select>
+        ${kind === 'task' ? `<select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態">${statusOptions}</select>` : ''}
       </div>`}
     </div>`;
   }).join('');
@@ -192,6 +214,15 @@ function renderTagChips() {
   $('#tag-chips').innerHTML = tags.map((t) =>
     `<button class="chip ${state.filterTag === t ? 'on' : ''}" data-tag="${escapeHtml(t)}">#${escapeHtml(t)} (${counts[t] || 0})</button>`
   ).join('');
+}
+
+function renderSpaceOptions() {
+  const spaces = [...new Set(state.records.map((r) => String(r.space || '').trim()).filter(Boolean))].sort();
+  $('#space-suggestions').innerHTML = spaces.map((space) => `<option value="${escapeHtml(space)}"></option>`).join('');
+  const selected = $('#filter-space').value;
+  $('#filter-space').innerHTML = '<option value="">全部 Space</option>'
+    + spaces.map((space) => `<option value="${escapeHtml(space)}">${escapeHtml(space)}</option>`).join('');
+  if (spaces.includes(selected)) $('#filter-space').value = selected;
 }
 
 // ===== 回寫動作 =====
@@ -353,14 +384,26 @@ function closePhotoModal() {
 }
 
 // ===== 輸入區 =====
-function setActiveType(type) {
-  state.activeType = type;
-  document.querySelectorAll('.type-btn[data-type]').forEach((b) => {
-    const active = b.dataset.type === type;
+function setActiveKind(kind) {
+  state.activeKind = kind;
+  localStorage.setItem('whence_last_kind', kind);
+  document.querySelectorAll('.type-btn[data-kind]').forEach((b) => {
+    const active = b.dataset.kind === kind;
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', String(active));
   });
-  $('#todo-options').hidden = type !== 'todo';
+  $('#todo-options').hidden = kind !== 'task';
+}
+
+function setActiveView(view) {
+  state.activeView = view;
+  document.querySelectorAll('.view-btn').forEach((button) => {
+    const active = button.dataset.view === view;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  $('#records-title').textContent = VIEW_LABELS[view];
+  renderList();
 }
 
 async function save() {
@@ -369,7 +412,8 @@ async function save() {
   if (state.photoBusy) { toast('照片仍在處理中，請稍候'); return; }
 
   const data = {
-    type: state.activeType,
+    kind: state.activeKind,
+    space: $('#space').value,
     content,
     tags: $('#tags').value,
     important: state.important,
@@ -377,7 +421,7 @@ async function save() {
     source: 'manual',
   };
   if (state.attachment) data.attachment = state.attachment;
-  if (state.activeType === 'todo' && $('#due-date').value) {
+  if (state.activeKind === 'task' && $('#due-date').value) {
     const date = $('#due-date').value;
     const time = $('#due-time').value;
     data.due_date = time ? `${date}T${time}:00+08:00` : `${date}T00:00:00+08:00`;
@@ -392,6 +436,7 @@ async function save() {
     await apiPost('create', data);
     $('#content').value = '';
     $('#tags').value = '';
+    localStorage.setItem('whence_last_space', $('#space').value.trim());
     $('#due-date').value = '';
     $('#due-time').value = '';
     clearSelectedPhoto();
@@ -499,8 +544,12 @@ async function saveSecret() {
 
 // ===== 初始化 =====
 function init() {
-  document.querySelectorAll('.type-btn[data-type]').forEach((b) =>
-    b.addEventListener('click', () => setActiveType(b.dataset.type)));
+  setActiveKind(KIND_LABELS[state.activeKind] ? state.activeKind : 'note');
+  $('#space').value = localStorage.getItem('whence_last_space') || '';
+  document.querySelectorAll('.type-btn[data-kind]').forEach((b) =>
+    b.addEventListener('click', () => setActiveKind(b.dataset.kind)));
+  document.querySelectorAll('.view-btn').forEach((button) =>
+    button.addEventListener('click', () => setActiveView(button.dataset.view)));
 
   $('#btn-important').addEventListener('click', () => {
     state.important = !state.important;
@@ -532,7 +581,8 @@ function init() {
   $('#btn-batch-exit').addEventListener('click', () => setBatch(false));
 
   $('#search').addEventListener('input', renderList);
-  $('#filter-type').addEventListener('change', renderList);
+  $('#filter-kind').addEventListener('change', renderList);
+  $('#filter-space').addEventListener('change', renderList);
   $('#filter-status').addEventListener('change', renderList);
   $('#tag-chips').addEventListener('click', (e) => {
     const tag = e.target.closest('.chip')?.dataset.tag;

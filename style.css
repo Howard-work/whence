@@ -222,7 +222,7 @@ header h1 {
 
 .type-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 16px;
 }
@@ -355,10 +355,59 @@ select {
 }
 
 textarea {
-  min-height: 112px;
+  min-height: 84px;
   resize: vertical;
   line-height: 1.6;
 }
+
+.advanced-options {
+  margin: 0 0 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.advanced-options summary {
+  min-height: 48px;
+  padding: 12px 14px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.advanced-options summary span { margin-left: 5px; color: var(--subtle); font-size: 12px; font-weight: 450; }
+.advanced-body { padding: 4px 14px 2px; border-top: 1px solid var(--border-soft); }
+
+.view-nav {
+  position: sticky;
+  z-index: 20;
+  top: calc(6px + env(safe-area-inset-top));
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: rgba(11, 16, 32, 0.94);
+  backdrop-filter: blur(10px);
+}
+
+.view-btn {
+  min-width: 0;
+  min-height: 44px;
+  padding: 7px 3px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.view-btn.active { background: var(--surface-strong); color: var(--text); }
 
 textarea:hover,
 input:hover,
@@ -444,7 +493,7 @@ textarea::placeholder { color: #7f8aa0; }
 
 .filter-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -566,8 +615,11 @@ textarea::placeholder { color: #7f8aa0; }
   font-weight: 750;
 }
 
-.badge.type-note { background: var(--surface-strong); color: var(--muted); }
-.badge.type-todo { background: rgba(130, 170, 255, 0.16); color: #a9c4ff; }
+.badge.kind-note { background: var(--surface-strong); color: var(--muted); }
+.badge.kind-task { background: rgba(130, 170, 255, 0.16); color: #a9c4ff; }
+.badge.kind-idea { background: rgba(224, 185, 104, 0.16); color: var(--origin); }
+.space-meta { color: var(--ok); }
+.kind-marker { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 12px; background: var(--surface-raised); }
 .badge.important { background: rgba(240, 195, 107, 0.16); color: var(--warn); }
 .badge.urgent { background: rgba(255, 123, 145, 0.16); color: var(--danger); }
 .item-tag { color: #a9c4ff; }
@@ -779,6 +831,7 @@ textarea::placeholder { color: #7f8aa0; }
   .icon-btn { width: 44px; height: 44px; }
   .card { padding: 16px; }
   .type-row { gap: 6px; }
+  .filter-row { grid-template-columns: 1fr 1fr; }
   .type-btn { font-size: 13px; }
   .section-hint { display: none; }
   .item { gap: 8px; padding: 11px; }
