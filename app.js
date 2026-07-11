@@ -1,4 +1,5 @@
 'use strict';
+const APP_VERSION = '0.6.1';
 
 // ===== 設定 =====
 const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1mh2iFpUKvVahDejUHfJoWQ0xc1lj8z6qeIh88jhSQVK5zw/exec';
@@ -46,6 +47,7 @@ const state = {
   calendarCursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   calendarSelected: new Date(),
   calendarView: 'month',
+  customerAliases: {},
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -840,14 +842,27 @@ function equipmentMatchesKeyword(record, keyword) {
   return !keyword || [record.customer, record.machine, record.description, record.action_taken, record.tags, status.label].join(' ').toLowerCase().includes(keyword);
 }
 
-function customerKey(value) { return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function rawCustomerKey(value) { return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+function customerKey(value) { const key = rawCustomerKey(value); return rawCustomerKey(state.customerAliases[key] || key); }
 
 function renderEquipmentCustomerFilter() {
   const selected = $('#equipment-customer-filter').value;
   const customers = new Map();
-  state.equipmentRecords.forEach((record) => { const label = String(record.customer || '').trim(); const key = customerKey(label); if (key && !customers.has(key)) customers.set(key, label); });
+  state.equipmentRecords.forEach((record) => { const rawLabel = String(record.customer || '').trim(); const rawKey = rawCustomerKey(rawLabel); const label = state.customerAliases[rawKey] || rawLabel; const key = customerKey(rawLabel); if (key && !customers.has(key)) customers.set(key, label); });
   $('#equipment-customer-filter').innerHTML = '<option value="">全部客戶</option>' + [...customers.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`).join('');
   if (customers.has(selected)) $('#equipment-customer-filter').value = selected;
+}
+
+function renderEquipmentCurrentSummary(customer) {
+  const latest = new Map();
+  state.equipmentRecords.filter((record) => customerKey(record.customer) === customer).forEach((record) => {
+    const key = String(record.machine || '').trim().toLowerCase();
+    const time = new Date(record.occurred_at || record.created_at).getTime();
+    if (key && (!latest.has(key) || time > latest.get(key).time)) latest.set(key, { record, time });
+  });
+  const rows = [...latest.values()].sort((a, b) => a.record.machine.localeCompare(b.record.machine));
+  $('#equipment-current-summary').hidden = !rows.length;
+  $('#equipment-current-summary').innerHTML = rows.length ? '<h3>設備目前狀態</h3>' + rows.map(({ record }) => { const status = EQUIPMENT_STATUS[record.status] || EQUIPMENT_STATUS.recurring; return `<div class="equipment-current-row"><strong>${escapeHtml(record.machine)}</strong><div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div>`; }).join('') : '';
 }
 
 function renderEquipmentMachineFilter() {
@@ -878,6 +893,7 @@ function timelineDateAllowed(value) {
 }
 
 function renderCustomerTimeline(customer) {
+  renderEquipmentCurrentSummary(customer);
   const keyword = $('#equipment-search').value.trim().toLowerCase();
   const statusFilter = $('#equipment-status-filter').value;
   const machineFilter = $('#equipment-machine-filter').value;
@@ -912,7 +928,9 @@ function renderCustomerTimeline(customer) {
 
 function renderEquipmentList() {
   const customer = $('#equipment-customer-filter').value;
+  $('#btn-customer-alias').hidden = !customer;
   if (customer) { renderCustomerTimeline(customer); return; }
+  $('#equipment-current-summary').hidden = true;
   const keyword = $('#equipment-search').value.trim().toLowerCase();
   const statusFilter = $('#equipment-status-filter').value;
   const machineFilter = $('#equipment-machine-filter').value;
@@ -942,8 +960,8 @@ function renderEquipmentList() {
 async function loadEquipment() {
   $('#equipment-list').setAttribute('aria-busy', 'true');
   try {
-    const [equipmentRecords, records, calendarRecords] = await Promise.all([apiGet({ action: 'equipment_list' }), fetchAllRecords(), apiGet({ action: 'calendar_list' }).catch(() => [])]);
-    state.equipmentRecords = equipmentRecords; state.records = records; state.calendarRecords = calendarRecords;
+    const [equipmentRecords, records, calendarRecords, aliases] = await Promise.all([apiGet({ action: 'equipment_list' }), fetchAllRecords(), apiGet({ action: 'calendar_list' }).catch(() => []), apiGet({ action: 'customer_aliases' }).catch(() => ({}))]);
+    state.equipmentRecords = equipmentRecords; state.records = records; state.calendarRecords = calendarRecords; state.customerAliases = aliases;
     renderEquipmentSuggestions();
     renderEquipmentCustomerFilter();
     renderEquipmentList();
@@ -952,6 +970,28 @@ async function loadEquipment() {
   } finally {
     $('#equipment-list').setAttribute('aria-busy', 'false');
   }
+}
+
+async function mergeSelectedCustomer() {
+  const selected = $('#equipment-customer-filter').value;
+  if (!selected) return;
+  const sourceLabel = $('#equipment-customer-filter').selectedOptions[0]?.textContent || selected;
+  const canonical = prompt(`將「${sourceLabel}」合併顯示到哪個標準客戶名稱？`, sourceLabel);
+  if (!canonical || rawCustomerKey(canonical) === selected) return;
+  if (!confirm(`之後將「${sourceLabel}」統一顯示為「${canonical.trim()}」，不改寫歷史紀錄。確定嗎？`)) return;
+  try {
+    state.customerAliases = await apiPost('customer_alias_set', { alias: sourceLabel, canonical: canonical.trim() });
+    renderEquipmentCustomerFilter(); $('#equipment-customer-filter').value = customerKey(sourceLabel); renderEquipmentMachineFilter(); renderEquipmentList(); toast('客戶名稱已合併顯示');
+  } catch (err) { toast(`合併失敗：${err.message}`); }
+}
+
+async function checkForAppUpdate() {
+  $('#app-version').textContent = `Whence v${APP_VERSION}`;
+  try {
+    const response = await fetch(`./manifest.json?update=${Date.now()}`, { cache: 'no-store' });
+    const manifest = await response.json();
+    if (manifest.version && manifest.version !== APP_VERSION) $('#app-version').textContent = `Whence v${APP_VERSION} · 有新版 ${manifest.version}，請重新開啟`;
+  } catch (_) {}
 }
 
 async function handleEquipmentPhoto(event) {
@@ -1355,6 +1395,7 @@ function init() {
   $('#equipment-search').addEventListener('input', () => { renderEquipmentMachineFilter(); renderEquipmentList(); });
   $('#equipment-machine-filter').addEventListener('change', renderEquipmentList);
   $('#equipment-customer-filter').addEventListener('change', () => { renderEquipmentMachineFilter(); renderEquipmentList(); });
+  $('#btn-customer-alias').addEventListener('click', mergeSelectedCustomer);
   $('#equipment-status-filter').addEventListener('change', renderEquipmentList);
   $('#equipment-date-from').addEventListener('change', renderEquipmentList);
   $('#equipment-date-to').addEventListener('change', renderEquipmentList);
@@ -1421,10 +1462,11 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.6.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.6.1').catch(() => {});
   }
 
   resetCalendarForm();
+  checkForAppUpdate();
   const initialScreen = location.hash === '#equipment' ? 'equipment' : location.hash === '#calendar' ? 'calendar' : 'records';
   switchScreen(initialScreen, false);
   if (getSecret()) {

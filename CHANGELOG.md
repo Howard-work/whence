@@ -1,5 +1,11 @@
 # Whence Changelog
 
+## v0.6.1 — 2026-07-11
+
+- Added shared customer aliases without rewriting historical equipment records.
+- Added latest-state summaries for every machine in a selected customer timeline.
+- Added an app-version display and update check.
+
 ## v0.6.0 — 2026-07-11
 
 - Added customer-first unified timelines for equipment, records, and Whence calendar events.
