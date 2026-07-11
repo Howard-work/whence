@@ -367,6 +367,29 @@ textarea {
   background: rgba(255, 255, 255, 0.015);
 }
 
+.space-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -2px 0 14px;
+}
+
+.space-btn {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 100ms ease;
+}
+
+.space-btn:hover { border-color: var(--border); color: var(--text); }
+.space-btn:active { transform: scale(0.96); }
+.space-btn.active { border-color: var(--ok); background: rgba(149, 212, 123, 0.12); color: var(--ok); }
+
 .advanced-options summary {
   min-height: 48px;
   padding: 12px 14px;

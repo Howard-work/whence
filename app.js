@@ -406,6 +406,20 @@ function setActiveView(view) {
   renderList();
 }
 
+function syncSpaceButtons() {
+  const value = $('#space').value.trim();
+  document.querySelectorAll('.space-btn').forEach((button) => {
+    const active = button.dataset.space === value;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function toggleQuickSpace(space) {
+  $('#space').value = $('#space').value.trim() === space ? '' : space;
+  syncSpaceButtons();
+}
+
 async function save() {
   const content = $('#content').value.trim();
   if (!content) { toast('內容不可為空'); return; }
@@ -546,10 +560,14 @@ async function saveSecret() {
 function init() {
   setActiveKind(KIND_LABELS[state.activeKind] ? state.activeKind : 'note');
   $('#space').value = localStorage.getItem('whence_last_space') || '';
+  syncSpaceButtons();
   document.querySelectorAll('.type-btn[data-kind]').forEach((b) =>
     b.addEventListener('click', () => setActiveKind(b.dataset.kind)));
   document.querySelectorAll('.view-btn').forEach((button) =>
     button.addEventListener('click', () => setActiveView(button.dataset.view)));
+  document.querySelectorAll('.space-btn').forEach((button) =>
+    button.addEventListener('click', () => toggleQuickSpace(button.dataset.space)));
+  $('#space').addEventListener('input', syncSpaceButtons);
 
   $('#btn-important').addEventListener('click', () => {
     state.important = !state.important;
