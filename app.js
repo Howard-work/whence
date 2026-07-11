@@ -24,6 +24,10 @@ const state = {
   editDirty: false,
   editImportant: false,
   editUrgent: false,
+  editAttachment: null,
+  editRemoveAttachment: false,
+  editHadAttachment: false,
+  editPhotoBusy: false,
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -420,6 +424,43 @@ function updateEditFlags() {
   $('#edit-urgent').setAttribute('aria-pressed', String(state.editUrgent));
 }
 
+function renderEditPhotoState() {
+  const hasPhoto = state.editAttachment || (state.editHadAttachment && !state.editRemoveAttachment);
+  $('#edit-photo-label').textContent = state.editAttachment ? '已選新照片' : (hasPhoto ? '更換照片' : '新增照片');
+  $('#btn-remove-edit-photo').hidden = !hasPhoto;
+  if (state.editAttachment) $('#edit-photo-status').textContent = `新照片 ${formatBytes(state.editAttachment.size)}`;
+  else if (state.editRemoveAttachment) $('#edit-photo-status').textContent = '儲存後會將舊照片移至待清理附件';
+  else if (state.editHadAttachment) $('#edit-photo-status').textContent = '目前有 1 張照片';
+  else $('#edit-photo-status').textContent = '沒有照片';
+}
+
+async function handleEditPhotoSelection(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  state.editPhotoBusy = true;
+  $('#edit-photo-status').textContent = '照片處理中…';
+  try {
+    state.editAttachment = await compressPhoto(file);
+    state.editRemoveAttachment = false;
+    state.editDirty = true;
+    renderEditPhotoState();
+  } catch (err) {
+    $('#edit-photo-input').value = '';
+    toast(err.message);
+    renderEditPhotoState();
+  } finally {
+    state.editPhotoBusy = false;
+  }
+}
+
+function removeEditPhoto() {
+  state.editAttachment = null;
+  state.editRemoveAttachment = state.editHadAttachment;
+  state.editDirty = true;
+  $('#edit-photo-input').value = '';
+  renderEditPhotoState();
+}
+
 function openEdit(id) {
   const record = state.records.find((item) => item.id === id);
   if (!record) return;
@@ -428,13 +469,17 @@ function openEdit(id) {
   state.editingId = id;
   state.editImportant = record.important === 'Y';
   state.editUrgent = record.urgent === 'Y';
+  state.editAttachment = null;
+  state.editRemoveAttachment = false;
+  state.editHadAttachment = parseAttachments(record.attachments).length > 0;
   $('#edit-content').value = record.content || '';
   $('#edit-kind').value = kind;
   $('#edit-space').value = record.space || '';
   $('#edit-tags').value = record.tags || '';
   $('#edit-due-date').value = due.date;
   $('#edit-due-time').value = record.all_day === 'Y' ? '' : due.time;
-  $('#edit-photo-note').hidden = parseAttachments(record.attachments).length === 0;
+  $('#edit-photo-input').value = '';
+  renderEditPhotoState();
   updateEditKindUI();
   updateEditFlags();
   state.editDirty = false;
@@ -453,6 +498,7 @@ async function saveEdit() {
   const record = state.records.find((item) => item.id === state.editingId);
   const content = $('#edit-content').value.trim();
   if (!record || !content) { toast('內容不可為空'); return; }
+  if (state.editPhotoBusy) { toast('照片仍在處理中，請稍候'); return; }
   const previousKind = record.kind || (record.type === 'todo' ? 'task' : 'note');
   const kind = $('#edit-kind').value;
   const data = {
@@ -465,6 +511,14 @@ async function saveEdit() {
     urgent: state.editUrgent,
   };
   if (kind !== previousKind) data.status = kind === 'task' ? 'open' : 'active';
+  if (state.editAttachment) {
+    data.attachment = {
+      data: state.editAttachment.data,
+      mime_type: state.editAttachment.mime_type,
+    };
+  } else if (state.editRemoveAttachment) {
+    data.remove_attachment = true;
+  }
   if (kind === 'task' && $('#edit-due-date').value) {
     const date = $('#edit-due-date').value;
     const time = $('#edit-due-time').value;
@@ -697,6 +751,8 @@ function init() {
   $('#btn-close-photo').addEventListener('click', closePhotoModal);
   $('#btn-close-edit').addEventListener('click', () => closeEdit());
   $('#btn-save-edit').addEventListener('click', saveEdit);
+  $('#edit-photo-input').addEventListener('change', handleEditPhotoSelection);
+  $('#btn-remove-edit-photo').addEventListener('click', removeEditPhoto);
   $('#edit-kind').addEventListener('change', () => { state.editDirty = true; updateEditKindUI(); });
   ['#edit-content', '#edit-space', '#edit-tags', '#edit-due-date', '#edit-due-time'].forEach((selector) =>
     $(selector).addEventListener('input', () => { state.editDirty = true; }));

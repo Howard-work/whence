@@ -837,6 +837,16 @@ textarea::placeholder { color: #7f8aa0; }
 
 .edit-grid > div { min-width: 0; }
 
+.edit-photo-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.edit-photo-field .secondary-btn { margin: 0; }
+.danger-text { color: var(--danger); }
+
 .photo-full-image {
   display: block;
   width: 100%;

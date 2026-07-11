@@ -211,7 +211,15 @@
           <input id="edit-due-time" type="time">
         </div>
       </div>
-      <p id="edit-photo-note" class="hint" hidden>這筆記錄的照片會保留；目前可從記錄卡片查看。</p>
+      <div class="edit-photo-field">
+        <input id="edit-photo-input" class="sr-only" type="file" accept="image/*">
+        <label class="photo-picker" for="edit-photo-input">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3v12H4Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          <span id="edit-photo-label">新增照片</span>
+        </label>
+        <button type="button" id="btn-remove-edit-photo" class="secondary-btn danger-text" hidden>移除照片</button>
+      </div>
+      <p id="edit-photo-status" class="hint"></p>
       <button type="button" id="btn-save-edit" class="save-btn">儲存修改</button>
     </div>
   </div>
