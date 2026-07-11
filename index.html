@@ -198,7 +198,9 @@
       <section id="equipment-list" aria-busy="false"></section>
     </section>
     <section id="calendar-screen" class="app-screen" aria-labelledby="calendar-title" hidden>
-      <section class="card calendar-capture">
+      <section class="calendar-toolbar card"><div class="calendar-nav-row"><button type="button" id="calendar-prev" class="secondary-btn" aria-label="上個月">‹</button><h2 id="calendar-month-label"></h2><button type="button" id="calendar-next" class="secondary-btn" aria-label="下個月">›</button></div><div class="calendar-toolbar-actions"><button type="button" id="calendar-today" class="secondary-btn">今天</button><button type="button" id="calendar-view-month" class="secondary-btn active">月曆</button><button type="button" id="calendar-view-list" class="secondary-btn">清單</button><button type="button" id="calendar-add" class="save-btn">＋ 新增行程</button></div></section>
+      <section id="calendar-month-view"><div class="calendar-weekdays" aria-hidden="true"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div id="calendar-grid" class="calendar-grid"></div><section class="calendar-day-panel"><div class="section-heading compact"><h3 id="calendar-selected-label">今日</h3></div><div id="calendar-day-list"></div></section></section>
+      <section id="calendar-form" class="card calendar-capture" hidden>
         <div class="section-heading"><div><p class="eyebrow">CALENDAR</p><h2 id="calendar-title">新增行程</h2></div><span class="section-hint">同步到獨立的 Whence 日曆</span></div>
         <input id="calendar-editing-id" type="hidden">
         <label class="field-label" for="calendar-title-input">行程名稱</label><input id="calendar-title-input" type="text" autocomplete="off" placeholder="例如：客戶現場檢查">
@@ -210,7 +212,7 @@
         <div class="form-actions"><button type="button" id="btn-save-calendar" class="save-btn">儲存行程</button><button type="button" id="btn-cancel-calendar-edit" class="secondary-btn" hidden>取消編輯</button></div>
       </section>
       <section class="filter-bar" aria-labelledby="calendar-list-title"><div class="section-heading compact"><div><p class="eyebrow">SCHEDULE</p><h2 id="calendar-list-title">近期行程</h2></div></div><input id="calendar-search" type="search" aria-label="搜尋行程" placeholder="搜尋名稱、地點或備註"></section>
-      <section id="calendar-list" aria-busy="false"></section>
+      <section id="calendar-list" aria-busy="false" hidden></section>
     </section>
   </main>
 
