@@ -1,5 +1,11 @@
 # Whence Changelog
 
+## v0.6.6 — 2026-07-12
+
+- Calendar event editing now changes the form heading from 「新增行程」 to 「編輯行程」.
+- Tapping the currently open event a second time now closes and resets the edit form.
+- Saving or cancelling an edit always restores the new-event form state.
+
 ## v0.6.5 — 2026-07-12
 
 - Refined empty states so functional headings and counts are not repeated inside their message cards.

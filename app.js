@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.6.5';
+const APP_VERSION = '0.6.6';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1302,8 +1302,14 @@ function resetCalendarForm() {
   $('#calendar-editing-id').value = '';
   $('#calendar-title-input').value = ''; $('#calendar-location').value = ''; $('#calendar-notes').value = '';
   $('#calendar-all-day').checked = false; $('#calendar-end-wrap').hidden = false; $('#calendar-reminder').value = '30'; $('#calendar-linked-task').value = '';
+  $('#calendar-title').textContent = '新增行程';
   $('#btn-save-calendar').textContent = '儲存行程'; $('#btn-cancel-calendar-edit').hidden = true;
   setCalendarDefaults();
+}
+
+function closeCalendarEdit() {
+  resetCalendarForm();
+  $('#calendar-form').hidden = true;
 }
 
 async function saveCalendar() {
@@ -1313,16 +1319,21 @@ async function saveCalendar() {
     const id = $('#calendar-editing-id').value;
     if (id) data.id = id;
     await apiPost(id ? 'calendar_update' : 'calendar_create', data);
-    toast(id ? '行程已更新' : '行程已建立'); resetCalendarForm(); $('#calendar-form').hidden = true; await loadCalendar();
+    toast(id ? '行程已更新' : '行程已建立'); closeCalendarEdit(); await loadCalendar();
   } catch (err) { toast(err.message); }
 }
 
 function editCalendar(id) {
   const r = state.calendarRecords.find((item) => item.id === id); if (!r) return;
   if (r.read_only) { toast('這筆行程請在 Google 日曆中編輯'); return; }
+  if (!$('#calendar-form').hidden && $('#calendar-editing-id').value === r.id) {
+    closeCalendarEdit();
+    return;
+  }
   $('#calendar-form').hidden = false;
   $('#calendar-editing-id').value = r.id; $('#calendar-title-input').value = r.title || ''; $('#calendar-location').value = r.location || ''; $('#calendar-notes').value = r.notes || '';
   $('#calendar-all-day').checked = r.all_day === 'Y'; $('#calendar-end-wrap').hidden = r.all_day === 'Y'; $('#calendar-start').value = localDateTimeValue(r.start_time); $('#calendar-end').value = localDateTimeValue(r.end_time); $('#calendar-reminder').value = String(r.reminder_minutes || '0'); $('#calendar-linked-task').value = r.linked_event_id || '';
+  $('#calendar-title').textContent = '編輯行程';
   $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1516,7 +1527,7 @@ function init() {
   $('#calendar-grid').addEventListener('click', (event) => { const day = event.target.closest('[data-calendar-date]'); if (!day) return; state.calendarSelected = new Date(`${day.dataset.calendarDate}T12:00:00`); renderMonthCalendar(); });
   $('#calendar-day-list').addEventListener('click', (event) => { const eventButton = event.target.closest('[data-calendar-id]'); const taskButton = event.target.closest('[data-task-id]'); if (eventButton) editCalendar(eventButton.dataset.calendarId); if (taskButton) openTaskInCalendar(taskButton.dataset.taskId); });
   $('#btn-save-calendar').addEventListener('click', saveCalendar);
-  $('#btn-cancel-calendar-edit').addEventListener('click', () => { resetCalendarForm(); $('#calendar-form').hidden = true; });
+  $('#btn-cancel-calendar-edit').addEventListener('click', closeCalendarEdit);
   $('#calendar-search').addEventListener('input', renderCalendarList);
   $('#calendar-list').addEventListener('click', (event) => {
     const control = event.target.closest('[data-calendar-act]'); if (!control) return;
@@ -1544,7 +1555,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.6.5').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.6.6').catch(() => {});
   }
 
   resetCalendarForm();
