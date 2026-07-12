@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.8.1';
+const APP_VERSION = '0.9.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -67,9 +67,6 @@ const state = {
   editRemoveAttachment: false,
   editHadAttachment: false,
   editPhotoBusy: false,
-  editSyncCalendar: false,
-  editLinkedCalendar: null,
-  editCalendarPreviewLoading: false,
   equipmentRecords: [],
   equipmentAttachment: null,
   equipmentPhotoBusy: false,
@@ -83,9 +80,12 @@ const state = {
   equipmentEditRemoveAttachment: false,
   equipmentEditHadAttachment: false,
   calendarRecords: [],
+  calendarSearchRecords: [],
+  calendarSearchLoaded: false,
   calendarCursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   calendarSelected: new Date(),
   calendarView: 'month',
+  calendarRepairDone: false,
   customerAliases: {},
   occasionChecked: false,
 };
@@ -318,7 +318,7 @@ function renderRecordCards(rows) {
             ${kind !== 'note' ? '<button type="button" data-act="convert" data-kind="note">轉為記事</button>' : ''}
             ${kind !== 'task' ? '<button type="button" data-act="convert" data-kind="task">轉為待辦</button>' : ''}
             ${kind !== 'idea' ? '<button type="button" data-act="convert" data-kind="idea">轉為札記</button>' : ''}
-            ${kind === 'task' ? `<button type="button" data-act="calendar">${r.calendar_id ? '開啟行程' : '加入行程'}</button>` : ''}
+            ${kind === 'task' && r.calendar_id ? '<button type="button" data-act="calendar">開啟行程</button>' : ''}
             <button type="button" class="menu-delete" data-act="delete">刪除</button>
           </div>
         </details>
@@ -359,9 +359,10 @@ function renderList() {
   if (keyword || state.filterTag) { renderGlobalSearch(keyword, state.filterTag); return; }
   const rows = visibleRecords();
   if (state.activeView === 'today') {
+    const linkedTodayTaskIds = new Set(state.calendarRecords.filter((record) => sameLocalDay(record.start_time)).map((record) => record.linked_event_id).filter(Boolean));
     const due = rows.filter((record) => {
       const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
-      return kind === 'task' && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
+      return kind === 'task' && !linkedTodayTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
     });
     const dueIds = new Set(due.map((record) => record.id));
     const created = rows.filter((record) => sameLocalDay(record.created_at) && !dueIds.has(record.id));
@@ -383,7 +384,7 @@ function renderGlobalSearch(keyword, filterTag = '') {
   const records = state.records.filter((r) => matches(`${r.content} ${r.tags} ${r.space}`) && hasTag(r));
   const byKind = (kind) => records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === kind);
   const equipment = state.equipmentRecords.filter((r) => matches(`${r.customer} ${r.machine} ${r.description} ${r.action_taken} ${r.tags} ${(EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring).label}`) && hasTag(r));
-  const calendar = filterTag ? [] : state.calendarRecords.filter((r) => matches(`${r.title} ${r.location} ${r.notes}`));
+  const calendar = filterTag ? [] : state.calendarSearchRecords.filter((r) => matches(`${r.title} ${r.location} ${r.notes}`));
   const equipmentHtml = equipment.map((r) => `<button type="button" class="search-result" data-search-equipment="${escapeHtml(r.id)}"><strong>${escapeHtml(r.customer || r.machine)}</strong><span>${escapeHtml(r.customer ? `${r.machine} · ${r.description}` : r.description)}</span></button>`).join('');
   const calendarHtml = calendar.map((r) => `<button type="button" class="search-result" data-search-calendar="${escapeHtml(r.id)}"><strong>${escapeHtml(r.title)}</strong><span>${fmtDate(r.start_time)}</span></button>`).join('');
   $('#list').innerHTML = searchSection('待辦', renderRecordCards(byKind('task')), byKind('task').length)
@@ -391,6 +392,15 @@ function renderGlobalSearch(keyword, filterTag = '') {
     + searchSection('札記', renderRecordCards(byKind('idea')), byKind('idea').length)
     + searchSection('設備', equipmentHtml, equipment.length)
     + searchSection('行程', calendarHtml, calendar.length);
+}
+
+async function ensureCalendarSearchRecords() {
+  if (state.calendarSearchLoaded) return;
+  try {
+    state.calendarSearchRecords = await apiGet({ action: 'calendar_list' });
+    state.calendarSearchLoaded = true;
+    if ($('#search').value.trim()) renderList();
+  } catch (_) {}
 }
 
 function notebookRecords() {
@@ -518,9 +528,20 @@ async function withBusy(fn, okMsg) {
   }
 }
 
-function onListClick(e) {
+async function onListClick(e) {
   const searchCalendar = e.target.closest('[data-search-calendar]');
-  if (searchCalendar) { switchScreen('calendar'); editCalendar(searchCalendar.dataset.searchCalendar); return; }
+  if (searchCalendar) {
+    const record = state.calendarSearchRecords.find((item) => item.id === searchCalendar.dataset.searchCalendar);
+    if (record?.start_time) {
+      const date = new Date(record.start_time);
+      state.calendarCursor = new Date(date.getFullYear(), date.getMonth(), 1);
+      state.calendarSelected = date;
+    }
+    switchScreen('calendar');
+    await loadCalendar();
+    editCalendar(searchCalendar.dataset.searchCalendar);
+    return;
+  }
   const searchEquipment = e.target.closest('[data-search-equipment]');
   if (searchEquipment) { switchScreen('equipment'); $('#equipment-search').value = searchEquipment.querySelector('strong').textContent; renderEquipmentList(); return; }
   const calendarItem = e.target.closest('[data-today-calendar-id]');
@@ -532,6 +553,7 @@ function onListClick(e) {
   const item = e.target.closest('.item');
   if (!item) return;
   const id = item.dataset.id;
+  const record = state.records.find((entry) => entry.id === id);
   const control = e.target.closest('[data-act]');
   const act = control?.dataset.act;
 
@@ -542,7 +564,8 @@ function onListClick(e) {
     const done = control.checked;
     withBusy(() => apiPost('update', { id, status: done ? 'done' : 'open' }), done ? '已完成 ✓' : '重新開啟');
   } else if (act === 'delete') {
-    if (confirm('刪除這筆？（軟刪除，資料仍在試算表）')) {
+    const message = record?.calendar_id ? '刪除這筆待辦？已連結的 Whence 行程也會移入最近刪除。' : '刪除這筆？（軟刪除，資料仍在試算表）';
+    if (confirm(message)) {
       withBusy(() => apiPost('delete', { id }), '已刪除');
     } else {
       e.preventDefault();
@@ -550,6 +573,7 @@ function onListClick(e) {
   } else if (act === 'convert') {
     const kind = control.dataset.kind;
     const status = kind === 'task' ? 'open' : 'active';
+    if (record?.calendar_id && kind !== 'task' && !confirm('轉換後會移除待辦日期，並將已連結行程移入最近刪除。繼續嗎？')) return;
     withBusy(() => apiPost('update', { id, kind, status }), `已轉為${KIND_LABELS[kind]}`);
   } else if (act === 'edit') {
     openEdit(id);
@@ -694,90 +718,6 @@ function localDateParts(value) {
 
 function updateEditKindUI() {
   $('#edit-task-options').hidden = $('#edit-kind').value !== 'task';
-  renderTaskCalendarSync();
-}
-
-function syncTimeLabel(value, allDay) {
-  if (!value) return '未設定時間';
-  const date = new Date(value);
-  if (isNaN(date)) return '未設定時間';
-  const dateLabel = date.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
-  if (allDay) return `${dateLabel} 全天`;
-  return `${dateLabel} ${date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
-}
-
-function editedTaskSyncData(record) {
-  const date = $('#edit-due-date').value;
-  const time = $('#edit-due-time').value;
-  return {
-    title: $('#edit-content').value.trim() || record.content || '',
-    due_date: date ? (time ? `${date}T${time}:00+08:00` : `${date}T00:00:00+08:00`) : '',
-    all_day: !!date && !time,
-  };
-}
-
-function renderTaskCalendarSync() {
-  const card = $('#edit-calendar-sync');
-  const checkbox = $('#edit-sync-calendar');
-  const preview = $('#edit-calendar-sync-preview');
-  const record = state.records.find((item) => item.id === state.editingId);
-  const kind = $('#edit-kind').value;
-  const linked = record && kind === 'task' && record.calendar_id;
-  card.hidden = !linked;
-  if (!linked) {
-    state.editSyncCalendar = false;
-    checkbox.checked = false;
-    $('#btn-save-edit').textContent = '儲存修改';
-    return;
-  }
-
-  const next = editedTaskSyncData(record);
-  checkbox.checked = state.editSyncCalendar;
-  checkbox.disabled = !next.due_date || state.editCalendarPreviewLoading || !!state.editCalendarPreviewError;
-  $('#btn-save-edit').textContent = state.editSyncCalendar ? '儲存並同步行程' : '儲存修改';
-  if (!next.due_date) {
-    state.editSyncCalendar = false;
-    checkbox.checked = false;
-    $('#btn-save-edit').textContent = '儲存修改';
-    preview.textContent = '待辦尚未設定到期時間，因此不會同步到行程。';
-    return;
-  }
-  if (state.editCalendarPreviewLoading) { preview.textContent = '正在讀取已關聯行程…'; return; }
-  if (state.editCalendarPreviewError) { preview.textContent = state.editCalendarPreviewError; return; }
-  if (!state.editSyncCalendar) {
-    preview.textContent = '不勾選時，只會儲存待辦本身。';
-    return;
-  }
-  if (!state.editLinkedCalendar) { preview.textContent = '找不到已關聯行程，無法安全同步。'; return; }
-
-  const event = state.editLinkedCalendar;
-  const changes = [];
-  if (String(event.title || '') !== next.title) changes.push(`名稱：${event.title || '未命名'} → ${next.title}`);
-  const sameTime = new Date(event.start_time).getTime() === new Date(next.due_date).getTime() && (event.all_day === 'Y') === next.all_day;
-  if (!sameTime) changes.push(`時間：${syncTimeLabel(event.start_time, event.all_day === 'Y')} → ${syncTimeLabel(next.due_date, next.all_day)}`);
-  preview.textContent = changes.length ? `儲存後將更新行程\n${changes.join('\n')}` : '名稱與時間已一致；儲存待辦後不需要變更行程。';
-}
-
-async function loadLinkedCalendarForEdit(record) {
-  if (!record?.calendar_id) return;
-  state.editCalendarPreviewLoading = true;
-  state.editCalendarPreviewError = '';
-  renderTaskCalendarSync();
-  try {
-    const records = await apiGet({ action: 'calendar_list' });
-    const linked = records.find((item) => item.id === record.calendar_id) || null;
-    if (state.editingId !== record.id) return;
-    state.editLinkedCalendar = linked;
-    if (!linked) state.editCalendarPreviewError = '找不到已關聯行程，請先從行程頁確認連結。';
-  } catch (_) {
-    if (state.editingId !== record.id) return;
-    state.editCalendarPreviewError = '暫時無法讀取已關聯行程，為避免誤改已暫停同步。';
-  } finally {
-    if (state.editingId === record.id) {
-      state.editCalendarPreviewLoading = false;
-      renderTaskCalendarSync();
-    }
-  }
 }
 
 function updateEditFlags() {
@@ -835,10 +775,6 @@ function openEdit(id) {
   state.editAttachment = null;
   state.editRemoveAttachment = false;
   state.editHadAttachment = parseAttachments(record.attachments).length > 0;
-  state.editSyncCalendar = false;
-  state.editLinkedCalendar = null;
-  state.editCalendarPreviewLoading = false;
-  state.editCalendarPreviewError = '';
   $('#edit-content').value = record.content || '';
   $('#edit-kind').value = kind;
   $('#edit-space').value = record.space || '';
@@ -852,7 +788,6 @@ function openEdit(id) {
   state.editDirty = false;
   $('#edit-modal').hidden = false;
   $('#edit-content').focus();
-  if (kind === 'task' && record.calendar_id) loadLinkedCalendarForEdit(record);
 }
 
 function closeEdit(force = false) {
@@ -860,10 +795,6 @@ function closeEdit(force = false) {
   $('#edit-modal').hidden = true;
   state.editingId = '';
   state.editDirty = false;
-  state.editSyncCalendar = false;
-  state.editLinkedCalendar = null;
-  state.editCalendarPreviewLoading = false;
-  state.editCalendarPreviewError = '';
 }
 
 async function saveEdit() {
@@ -900,22 +831,14 @@ async function saveEdit() {
     data.due_date = '';
     data.all_day = false;
   }
-  const syncCalendar = kind === 'task' && state.editSyncCalendar && !!record.calendar_id;
+  if (record.calendar_id && (kind !== 'task' || !data.due_date) && !confirm('移除日期後，已連結的 Whence 行程會移入最近刪除。繼續嗎？')) return;
   const button = $('#btn-save-edit');
   button.disabled = true;
   button.textContent = '儲存中…';
   try {
     await apiPost('update', data);
-    let syncError = '';
-    if (syncCalendar) {
-      try {
-        await apiPost('task_calendar_sync', { direction: 'task_to_calendar', task_id: record.id });
-      } catch (err) {
-        syncError = err.message;
-      }
-    }
     closeEdit(true);
-    toast(syncError ? `待辦已儲存；行程未同步：${syncError}` : (syncCalendar ? '待辦與行程已更新' : '修改已儲存'));
+    toast(kind === 'task' && data.due_date ? '待辦與行程已更新' : '修改已儲存');
     await loadList();
     if (state.activeScreen === 'calendar') await loadCalendar();
   } catch (err) {
@@ -1004,7 +927,7 @@ async function save() {
     $('#btn-urgent').classList.remove('on');
     $('#btn-important').setAttribute('aria-pressed', 'false');
     $('#btn-urgent').setAttribute('aria-pressed', 'false');
-    toast('已儲存 ✓');
+    toast(state.activeKind === 'task' && data.due_date ? '待辦與行程已建立' : '已儲存 ✓');
     await loadList();
   } catch (err) {
     toast(`儲存失敗：${err.message}`);
@@ -1046,6 +969,11 @@ async function batchCall(action, extra = {}) {
 
 async function batchApplyStatus() {
   if (!state.selected.size) { toast('尚未選取任何項目'); return; }
+  const nonTasks = [...state.selected].filter((id) => {
+    const record = state.records.find((item) => item.id === id);
+    return !record || (record.kind || (record.type === 'todo' ? 'task' : 'note')) !== 'task';
+  });
+  if (nonTasks.length) { toast('處理狀態只能套用在待辦'); return; }
   const status = $('#batch-status').value;
   const count = state.selected.size;
   const ok = await withBusy(() => batchCall('update', { status }), `已更新 ${count} 筆`);
@@ -1401,35 +1329,12 @@ function setCalendarDefaults() {
 async function openTaskInCalendar(id) {
   const task = state.records.find((record) => record.id === id);
   if (!task) return;
+  if (!task.calendar_id) { openEdit(id); return; }
   switchScreen('calendar');
   if (!state.calendarRecords.length) await loadCalendar();
-  if (task.calendar_id) {
-    const linked = state.calendarRecords.find((record) => record.id === task.calendar_id);
-    if (linked) { editCalendar(linked.id); return; }
-  }
-  resetCalendarForm();
-  setCalendarView('month');
-  $('#calendar-title-input').value = task.content || '';
-  $('#calendar-linked-task').value = task.id;
-  if (task.due_date) {
-    const due = new Date(task.due_date);
-    $('#calendar-all-day').checked = task.all_day === 'Y';
-    $('#calendar-end-wrap').hidden = task.all_day === 'Y';
-    $('#calendar-start').value = localDateTimeValue(due);
-    $('#calendar-end').value = localDateTimeValue(new Date(due.getTime() + 60 * 60 * 1000));
-  }
-  $('#calendar-title-input').focus();
-  toast('已帶入待辦，確認後儲存到行程');
-}
-
-function renderCalendarTaskOptions(preferredId = $('#calendar-linked-task').value) {
-  const tasks = state.records.filter((r) => {
-    const isTask = (r.kind || (r.type === 'todo' ? 'task' : 'note')) === 'task';
-    return isTask && (!['done', 'cancelled'].includes(r.status) || r.id === preferredId);
-  });
-  $('#calendar-linked-task').innerHTML = '<option value="">不關聯</option>' + tasks.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.content)}</option>`).join('');
-  if (tasks.some((r) => r.id === preferredId)) $('#calendar-linked-task').value = preferredId;
-  renderCalendarTaskSync();
+  const linked = state.calendarRecords.find((record) => record.id === task.calendar_id);
+  if (linked) editCalendar(linked.id);
+  else toast('找不到已連結行程，請重新整理後再試');
 }
 
 async function loadCalendar() {
@@ -1438,8 +1343,14 @@ async function loadCalendar() {
     if (!state.records.length) state.records = await fetchAllRecords();
     const start = new Date(state.calendarCursor); start.setDate(start.getDate() - 7);
     const end = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 2, 8);
+    await apiPost('calendar_reconcile', { start: start.toISOString(), end: end.toISOString() });
+    if (!state.calendarRepairDone) {
+      await apiPost('task_calendar_repair');
+      state.calendarRepairDone = true;
+    }
+    state.records = await fetchAllRecords();
     state.calendarRecords = await apiGet({ action: 'calendar_live', start: start.toISOString(), end: end.toISOString() });
-    renderCalendarTaskOptions();
+    state.calendarSearchLoaded = false;
     renderCalendarList();
     renderMonthCalendar();
     updateAppBadge();
@@ -1460,10 +1371,7 @@ function dayKey(value) {
 
 function calendarItemsForDay(date) {
   const key = dayKey(date);
-  const events = state.calendarRecords.filter((r) => dayKey(r.start_time) === key).map((r) => ({ type: 'event', data: r }));
-  const linked = new Set(events.map((x) => x.data.linked_event_id).filter(Boolean));
-  const tasks = state.records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === 'task' && r.due_date && dayKey(r.due_date) === key && !linked.has(r.id) && !['done', 'cancelled'].includes(r.status)).map((r) => ({ type: 'task', data: r }));
-  return events.concat(tasks).sort((a, b) => new Date(a.data.start_time || a.data.due_date) - new Date(b.data.start_time || b.data.due_date));
+  return state.calendarRecords.filter((r) => dayKey(r.start_time) === key).sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 }
 
 function renderMonthCalendar() {
@@ -1480,95 +1388,24 @@ function renderMonthCalendar() {
   $('#calendar-grid').innerHTML = cells.join('');
   const items = calendarItemsForDay(state.calendarSelected);
   $('#calendar-selected-label').textContent = state.calendarSelected.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'long' });
-  $('#calendar-day-list').innerHTML = items.length ? items.map((item) => item.type === 'event'
-    ? `<button type="button" class="calendar-day-entry" data-calendar-id="${escapeHtml(item.data.id)}"><span>${item.data.all_day === 'Y' ? '全天' : new Date(item.data.start_time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}</span><strong>${escapeHtml(item.data.title)}</strong></button>`
-    : `<button type="button" class="calendar-day-entry task" data-task-id="${escapeHtml(item.data.id)}"><span>待辦</span><strong>${escapeHtml(item.data.content)}</strong></button>`).join('') : '<p class="today-empty">這天沒有行程或到期待辦</p>';
+  $('#calendar-day-list').innerHTML = items.length ? items.map((item) => `<button type="button" class="calendar-day-entry" data-calendar-id="${escapeHtml(item.id)}"><span>${item.all_day === 'Y' ? '全天' : new Date(item.start_time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}</span><strong>${escapeHtml(item.title)}</strong></button>`).join('') : '<p class="today-empty">這天沒有行程</p>';
 }
 
 function calendarListItems() {
-  const linkedTaskIds = new Set(state.calendarRecords.map((record) => record.linked_event_id).filter(Boolean));
-  const rangeStart = new Date(state.calendarCursor); rangeStart.setDate(rangeStart.getDate() - 7);
-  const rangeEnd = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 2, 8);
-  const tasks = state.records
-    .filter((record) => (record.kind || (record.type === 'todo' ? 'task' : 'note')) === 'task' && record.due_date && !linkedTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status))
-    .filter((record) => { const due = new Date(record.due_date); return due >= rangeStart && due <= rangeEnd; })
-    .map((data) => ({ type: 'task', date: data.due_date, data }));
-  return state.calendarRecords.map((data) => ({ type: 'event', date: data.start_time, data }))
-    .concat(tasks)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  return state.calendarRecords.slice().sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 }
 
 function renderCalendarList() {
   const kw = $('#calendar-search').value.trim().toLowerCase();
-  const rows = calendarListItems().filter((item) => {
-    const data = item.data;
-    const text = item.type === 'event' ? `${data.title} ${data.location} ${data.notes}` : `${data.content} ${data.tags} ${data.space} ${STATUS_LABELS[data.status] || ''}`;
-    return !kw || text.toLowerCase().includes(kw);
-  });
-  if (!rows.length) { $('#calendar-list').innerHTML = `<div class="empty"><strong>還沒有行程或到期待辦</strong><span>${emptyNote('calendar')}</span></div>`; return; }
-  $('#calendar-list').innerHTML = rows.map((item) => {
-    const r = item.data;
-    const start = new Date(item.date);
+  const rows = calendarListItems().filter((record) => !kw || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(kw));
+  if (!rows.length) { $('#calendar-list').innerHTML = `<div class="empty"><strong>還沒有行程</strong><span>${emptyNote('calendar')}</span></div>`; return; }
+  $('#calendar-list').innerHTML = rows.map((r) => {
+    const start = new Date(r.start_time);
     const allDay = r.all_day === 'Y';
     const time = allDay ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     const day = start.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' });
-    if (item.type === 'task') {
-      return `<article class="item calendar-item calendar-task-item" data-task-id="${escapeHtml(r.id)}"><div class="calendar-item-time">${escapeHtml(day)}<br>${escapeHtml(time)}</div><div class="item-main"><div class="item-content">${escapeHtml(r.content)}</div><div class="item-meta"><span class="badge kind-task">待辦</span>${r.space ? `<span class="space-meta">${escapeHtml(r.space)}</span>` : ''}<span>${escapeHtml(STATUS_LABELS[r.status] || '待辦')}</span></div></div><div class="calendar-item-actions"><button class="secondary-btn" data-calendar-task-act="edit">編輯待辦</button></div></article>`;
-    }
     return `<article class="item calendar-item" data-id="${escapeHtml(r.id)}"><div class="calendar-item-time">${escapeHtml(day)}<br>${escapeHtml(time)}</div><div class="item-main"><div class="item-content">${escapeHtml(r.title)}</div><div class="item-meta">${r.location ? `<span>${escapeHtml(r.location)}</span>` : ''}${r.linked_event_id ? '<span class="space-meta">已關聯待辦</span>' : ''}${r.read_only ? '<span class="space-meta">Google 日曆 · 唯讀</span>' : `<span>提前 ${escapeHtml(r.reminder_minutes || '0')} 分鐘</span>`}</div></div>${r.read_only ? '' : '<div class="calendar-item-actions"><button class="secondary-btn" data-calendar-act="edit">編輯</button><button class="del-btn" data-calendar-act="delete">刪除</button></div>'}</article>`;
   }).join('');
-}
-
-function calendarFormSaveLabel() {
-  return $('#calendar-editing-id').value ? '更新行程' : '儲存行程';
-}
-
-function renderCalendarTaskSync() {
-  const card = $('#calendar-task-sync');
-  const checkbox = $('#calendar-sync-task');
-  const preview = $('#calendar-sync-task-preview');
-  const openTaskButton = $('#calendar-open-linked-task');
-  const taskId = $('#calendar-linked-task').value;
-  const task = state.records.find((item) => item.id === taskId);
-  card.hidden = !taskId;
-  if (!taskId) {
-    checkbox.checked = false;
-    checkbox.disabled = false;
-    openTaskButton.hidden = true;
-    $('#btn-save-calendar').textContent = calendarFormSaveLabel();
-    return;
-  }
-  checkbox.disabled = !task;
-  openTaskButton.hidden = !task;
-  if (!task) {
-    checkbox.checked = false;
-    preview.textContent = '找不到已關聯待辦，無法安全同步。';
-    $('#btn-save-calendar').textContent = calendarFormSaveLabel();
-    return;
-  }
-  $('#btn-save-calendar').textContent = checkbox.checked ? `${$('#calendar-editing-id').value ? '更新' : '儲存'}並同步待辦` : calendarFormSaveLabel();
-  if (!checkbox.checked) {
-    preview.textContent = '不勾選時，只會儲存行程本身。';
-    return;
-  }
-  const start = $('#calendar-start').value;
-  const allDay = $('#calendar-all-day').checked;
-  const nextTitle = $('#calendar-title-input').value.trim() || '未命名';
-  if (!start) { preview.textContent = '請先填寫行程開始時間，才能同步待辦。'; return; }
-  const changes = [];
-  if (String(task.content || '') !== nextTitle) changes.push(`名稱：${task.content || '未命名'} → ${nextTitle}`);
-  const nextDue = `${start}:00+08:00`;
-  const sameTime = task.due_date && new Date(task.due_date).getTime() === new Date(nextDue).getTime() && (task.all_day === 'Y') === allDay;
-  if (!sameTime) changes.push(`到期：${syncTimeLabel(task.due_date, task.all_day === 'Y')} → ${syncTimeLabel(nextDue, allDay)}`);
-  preview.textContent = changes.length ? `儲存後將更新待辦\n${changes.join('\n')}` : '名稱與時間已一致；儲存行程後不需要變更待辦。';
-}
-
-function openLinkedTaskFromCalendar() {
-  const taskId = $('#calendar-linked-task').value;
-  const task = state.records.find((item) => item.id === taskId);
-  if (!task) { toast('找不到已關聯待辦，請重新開啟行程後再試。'); return; }
-  closeCalendarEdit();
-  openEdit(task.id);
 }
 
 function calendarPayload() {
@@ -1583,11 +1420,9 @@ function resetCalendarForm() {
   $('#calendar-editing-id').value = '';
   $('#calendar-title-input').value = ''; $('#calendar-location').value = ''; $('#calendar-notes').value = '';
   $('#calendar-all-day').checked = false; $('#calendar-end-wrap').hidden = false; $('#calendar-reminder').value = '30'; $('#calendar-linked-task').value = '';
-  $('#calendar-sync-task').checked = false;
   $('#calendar-title').textContent = '新增行程';
   $('#btn-save-calendar').textContent = '儲存行程'; $('#btn-cancel-calendar-edit').hidden = true;
   setCalendarDefaults();
-  renderCalendarTaskSync();
 }
 
 function closeCalendarEdit() {
@@ -1601,17 +1436,8 @@ async function saveCalendar() {
     if (!data.title) throw new Error('請填寫行程名稱');
     const id = $('#calendar-editing-id').value;
     if (id) data.id = id;
-    const syncTask = $('#calendar-sync-task').checked && !!data.linked_event_id;
-    const saved = await apiPost(id ? 'calendar_update' : 'calendar_create', data);
-    let syncError = '';
-    if (syncTask) {
-      try {
-        await apiPost('task_calendar_sync', { direction: 'calendar_to_task', calendar_id: saved.id });
-      } catch (err) {
-        syncError = err.message;
-      }
-    }
-    toast(syncError ? `行程已儲存；待辦未同步：${syncError}` : (syncTask ? '行程與待辦已更新' : (id ? '行程已更新' : '行程已建立')));
+    await apiPost(id ? 'calendar_update' : 'calendar_create', data);
+    toast(data.linked_event_id ? '行程與待辦已更新' : (id ? '行程已更新' : '行程已建立'));
     closeCalendarEdit(); await loadCalendar();
   } catch (err) { toast(err.message); }
 }
@@ -1623,21 +1449,21 @@ function editCalendar(id) {
     closeCalendarEdit();
     return;
   }
-  renderCalendarTaskOptions(r.linked_event_id || '');
   $('#calendar-form').hidden = false;
   $('#calendar-editing-id').value = r.id; $('#calendar-title-input').value = r.title || ''; $('#calendar-location').value = r.location || ''; $('#calendar-notes').value = r.notes || '';
   $('#calendar-all-day').checked = r.all_day === 'Y'; $('#calendar-end-wrap').hidden = r.all_day === 'Y'; $('#calendar-start').value = localDateTimeValue(r.start_time); $('#calendar-end').value = localDateTimeValue(r.end_time); $('#calendar-reminder').value = String(r.reminder_minutes || '0'); $('#calendar-linked-task').value = r.linked_event_id || '';
-  $('#calendar-sync-task').checked = false;
   $('#calendar-title').textContent = '編輯行程';
-  $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; renderCalendarTaskSync(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function updateAppBadge() {
   if (!navigator.setAppBadge) return;
   const now = new Date();
   const today = now.toDateString();
-  const due = state.records.filter((r) => (r.kind || '') === 'task' && !['done', 'cancelled'].includes(r.status) && r.due_date && new Date(r.due_date).toDateString() === today).length;
-  const schedule = state.calendarRecords.filter((r) => new Date(r.start_time).toDateString() === today).length;
+  const scheduleRows = state.calendarRecords.filter((r) => new Date(r.start_time).toDateString() === today);
+  const linkedTaskIds = new Set(scheduleRows.map((r) => r.linked_event_id).filter(Boolean));
+  const due = state.records.filter((r) => (r.kind || '') === 'task' && !linkedTaskIds.has(r.id) && !['done', 'cancelled'].includes(r.status) && r.due_date && new Date(r.due_date).toDateString() === today).length;
+  const schedule = scheduleRows.length;
   const count = due + schedule;
   count ? navigator.setAppBadge(count).catch(() => {}) : navigator.clearAppBadge?.().catch(() => {});
 }
@@ -1772,16 +1598,7 @@ function init() {
   $('#btn-remove-edit-photo').addEventListener('click', removeEditPhoto);
   $('#edit-kind').addEventListener('change', () => { state.editDirty = true; updateEditKindUI(); });
   ['#edit-content', '#edit-space', '#edit-tags', '#edit-due-date', '#edit-due-time'].forEach((selector) =>
-    $(selector).addEventListener('input', () => { state.editDirty = true; if (state.editSyncCalendar) renderTaskCalendarSync(); }));
-  $('#edit-sync-calendar').addEventListener('change', async () => {
-    state.editSyncCalendar = $('#edit-sync-calendar').checked;
-    state.editDirty = true;
-    if (state.editSyncCalendar && !state.editLinkedCalendar && !state.editCalendarPreviewLoading) {
-      const record = state.records.find((item) => item.id === state.editingId);
-      if (record) await loadLinkedCalendarForEdit(record);
-    }
-    renderTaskCalendarSync();
-  });
+    $(selector).addEventListener('input', () => { state.editDirty = true; }));
   $('#edit-important').addEventListener('click', () => {
     state.editImportant = !state.editImportant; state.editDirty = true; updateEditFlags();
   });
@@ -1795,7 +1612,7 @@ function init() {
   $('#trash-list').addEventListener('click', (event) => { const button = event.target.closest('[data-trash-act="restore"]'); if (button) restoreTrashItem(button.closest('.trash-item')); });
   $('#trash-modal').addEventListener('click', (event) => { if (event.target === $('#trash-modal')) closeTrash(); });
   $('#btn-undo').addEventListener('click', () => {
-    if (confirm('撤回最後建立的一筆？')) withBusy(() => apiPost('undo'), '已撤回');
+    if (confirm('撤回最後建立的一筆記錄？')) withBusy(() => apiPost('undo'), '已撤回');
   });
 
   $('#btn-batch').addEventListener('click', () => setBatch(!state.batch));
@@ -1803,7 +1620,7 @@ function init() {
   $('#btn-batch-delete').addEventListener('click', batchDelete);
   $('#btn-batch-exit').addEventListener('click', () => setBatch(false));
 
-  $('#search').addEventListener('input', () => { if ($('#search').value.trim()) $('#records-panel').open = true; renderList(); });
+  $('#search').addEventListener('input', () => { if ($('#search').value.trim()) { $('#records-panel').open = true; ensureCalendarSearchRecords(); } renderList(); });
   $('#filter-space').addEventListener('change', renderList);
   $('#filter-status').addEventListener('change', renderList);
   $('#tag-chips').addEventListener('click', (e) => {
@@ -1874,11 +1691,7 @@ function init() {
         .catch((err) => toast(`刪除失敗：${err.message}`));
     }
   });
-  $('#calendar-all-day').addEventListener('change', () => { $('#calendar-end-wrap').hidden = $('#calendar-all-day').checked; renderCalendarTaskSync(); });
-  $('#calendar-linked-task').addEventListener('change', () => { $('#calendar-sync-task').checked = false; renderCalendarTaskSync(); });
-  $('#calendar-sync-task').addEventListener('change', renderCalendarTaskSync);
-  $('#calendar-open-linked-task').addEventListener('click', openLinkedTaskFromCalendar);
-  ['#calendar-title-input', '#calendar-start', '#calendar-end'].forEach((selector) => $(selector).addEventListener('input', renderCalendarTaskSync));
+  $('#calendar-all-day').addEventListener('change', () => { $('#calendar-end-wrap').hidden = $('#calendar-all-day').checked; });
   $('#calendar-add').addEventListener('click', () => { resetCalendarForm(); $('#calendar-form').hidden = false; $('#calendar-title-input').focus(); });
   $('#calendar-prev').addEventListener('click', () => moveCalendarMonth(-1));
   $('#calendar-next').addEventListener('click', () => moveCalendarMonth(1));
@@ -1886,21 +1699,21 @@ function init() {
   $('#calendar-view-month').addEventListener('click', () => setCalendarView('month'));
   $('#calendar-view-list').addEventListener('click', () => setCalendarView('list'));
   $('#calendar-grid').addEventListener('click', (event) => { const day = event.target.closest('[data-calendar-date]'); if (!day) return; state.calendarSelected = new Date(`${day.dataset.calendarDate}T12:00:00`); renderMonthCalendar(); });
-  $('#calendar-day-list').addEventListener('click', (event) => { const eventButton = event.target.closest('[data-calendar-id]'); const taskButton = event.target.closest('[data-task-id]'); if (eventButton) editCalendar(eventButton.dataset.calendarId); if (taskButton) openEdit(taskButton.dataset.taskId); });
+  $('#calendar-day-list').addEventListener('click', (event) => { const eventButton = event.target.closest('[data-calendar-id]'); if (eventButton) editCalendar(eventButton.dataset.calendarId); });
   $('#btn-save-calendar').addEventListener('click', saveCalendar);
   $('#btn-cancel-calendar-edit').addEventListener('click', closeCalendarEdit);
   $('#calendar-search').addEventListener('input', renderCalendarList);
   $('#calendar-list').addEventListener('click', (event) => {
-    const taskControl = event.target.closest('[data-calendar-task-act]');
-    if (taskControl) {
-      const taskItem = taskControl.closest('[data-task-id]');
-      if (taskControl.dataset.calendarTaskAct === 'edit' && taskItem) openEdit(taskItem.dataset.taskId);
-      return;
-    }
-    const control = event.target.closest('[data-calendar-act]'); if (!control) return;
-    const id = control.closest('.calendar-item').dataset.id;
+    const item = event.target.closest('.calendar-item'); if (!item) return;
+    const control = event.target.closest('[data-calendar-act]');
+    const id = item.dataset.id;
+    if (!control) { editCalendar(id); return; }
     if (control.dataset.calendarAct === 'edit') editCalendar(id);
-    if (control.dataset.calendarAct === 'delete' && confirm('刪除這筆行程？Google Calendar 內的行程也會刪除。')) apiPost('calendar_delete', { id }).then(() => { toast('行程已刪除'); return loadCalendar(); }).catch((err) => toast(err.message));
+    if (control.dataset.calendarAct === 'delete') {
+      const record = state.calendarRecords.find((item) => item.id === id);
+      const message = record?.linked_event_id ? '刪除這筆行程？Google 行程會刪除，關聯待辦會保留但移除日期。' : '刪除這筆行程？Google Calendar 內的行程也會刪除。';
+      if (confirm(message)) apiPost('calendar_delete', { id }).then(() => { toast('行程已刪除'); return loadCalendar(); }).catch((err) => toast(err.message));
+    }
   });
 
   $('#settings-modal').addEventListener('click', (e) => {
@@ -1923,7 +1736,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.8.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.9.0').catch(() => {});
   }
 
   resetCalendarForm();

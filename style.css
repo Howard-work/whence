@@ -569,17 +569,10 @@ textarea {
 .calendar-time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .check-row { display: flex; align-items: center; gap: 9px; margin: 14px 0 4px; color: var(--text); }
 .check-row input { width: 20px; height: 20px; }
-.sync-card { margin: 0 0 14px; padding: 12px; border: 1px solid var(--border-soft); border-left: 2px solid rgba(130, 170, 255, 0.64); border-radius: var(--radius-md); background: rgba(25, 35, 56, 0.54); }
-.sync-card > strong { display: block; color: var(--text); font-size: 13px; }
-.sync-card .check-row { min-height: 44px; margin: 2px 0 0; color: var(--muted); font-size: 13px; }
-.sync-preview { min-height: 18px; margin: 2px 0 0; color: var(--subtle); font-size: 12px; line-height: 1.65; white-space: pre-line; }
-.sync-card .secondary-btn { width: 100%; margin: 10px 0 0; }
 .form-actions { display: flex; gap: 10px; align-items: center; }
 .form-actions .save-btn { flex: 1; }
-.calendar-item { border-left: 3px solid var(--accent); }
-.calendar-task-item { border-left-color: var(--ok); }
+.calendar-item { border-left: 3px solid var(--accent); cursor: pointer; }
 .calendar-item-time { min-width: 84px; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
-.calendar-task-item .calendar-item-time { color: var(--ok); }
 .calendar-item .item-main { min-width: 0; }
 .calendar-item-actions { display: flex; gap: 6px; }
 .calendar-item-actions button { min-height: 44px; margin: 0; padding: 8px 10px; }

@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=0.8.1">
+  <link rel="stylesheet" href="./style.css?v=0.9.0">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -25,7 +25,7 @@
       </div>
     </div>
     <div class="header-actions">
-      <button type="button" id="btn-undo" class="icon-btn" aria-label="撤回最後建立的一筆" title="撤回最後建立的一筆">
+      <button type="button" id="btn-undo" class="icon-btn" aria-label="撤回最後建立的一筆記錄" title="撤回最後建立的一筆記錄">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 1 1-5.2 9"/></svg>
       </button>
       <button type="button" id="btn-refresh" class="icon-btn" aria-label="重新整理清單" title="重新整理清單">
@@ -244,8 +244,8 @@
         <div class="calendar-time-grid"><div><label class="field-label" for="calendar-start">開始</label><input id="calendar-start" type="datetime-local"></div><div id="calendar-end-wrap"><label class="field-label" for="calendar-end">結束</label><input id="calendar-end" type="datetime-local"></div></div>
         <label class="field-label" for="calendar-location">地點 <span>選填</span></label><input id="calendar-location" type="text" autocomplete="off">
         <label class="field-label" for="calendar-notes">備註 <span>選填</span></label><textarea id="calendar-notes" rows="2"></textarea>
-        <div class="calendar-time-grid"><div><label class="field-label" for="calendar-reminder">提前提醒</label><select id="calendar-reminder"><option value="0">不提醒</option><option value="10">10 分鐘</option><option value="30" selected>30 分鐘</option><option value="60">1 小時</option><option value="1440">1 天</option></select></div><div><label class="field-label" for="calendar-linked-task">關聯待辦 <span>選填</span></label><select id="calendar-linked-task"><option value="">不關聯</option></select></div></div>
-        <section id="calendar-task-sync" class="sync-card" hidden><strong>同步回待辦</strong><label class="check-row"><input id="calendar-sync-task" type="checkbox"> 儲存時同步名稱與時間到已關聯待辦</label><p id="calendar-sync-task-preview" class="sync-preview" aria-live="polite"></p><button type="button" id="calendar-open-linked-task" class="secondary-btn">開啟待辦編輯</button></section>
+        <label class="field-label" for="calendar-reminder">提前提醒</label><select id="calendar-reminder"><option value="0">不提醒</option><option value="10">10 分鐘</option><option value="30" selected>30 分鐘</option><option value="60">1 小時</option><option value="1440">1 天</option></select>
+        <input id="calendar-linked-task" type="hidden">
         <div class="form-actions"><button type="button" id="btn-save-calendar" class="save-btn">儲存行程</button><button type="button" id="btn-cancel-calendar-edit" class="secondary-btn" hidden>取消編輯</button></div>
       </section>
       <section id="calendar-list-filter" class="filter-bar" aria-labelledby="calendar-list-title" hidden><div class="section-heading compact"><div><p class="eyebrow">SCHEDULE</p><h2 id="calendar-list-title">近期行程</h2></div></div><input id="calendar-search" type="search" aria-label="搜尋行程" placeholder="搜尋名稱、地點或備註"></section>
@@ -280,7 +280,7 @@
       <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
       <button type="button" id="btn-enable-notifications" class="secondary-btn">啟用通知紅點</button>
       <button type="button" id="btn-open-trash" class="secondary-btn">最近刪除</button>
-      <p id="app-version" class="hint">Whence v0.8.1</p>
+      <p id="app-version" class="hint">Whence v0.9.0</p>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
@@ -334,7 +334,6 @@
           <input id="edit-due-time" type="time">
         </div>
       </div>
-      <section id="edit-calendar-sync" class="sync-card" hidden><strong>已關聯 Whence 行程</strong><label class="check-row"><input id="edit-sync-calendar" type="checkbox"> 儲存時同步名稱與到期時間到行程</label><p id="edit-calendar-sync-preview" class="sync-preview" aria-live="polite"></p></section>
       <div class="edit-photo-field">
         <input id="edit-photo-input" class="sr-only" type="file" accept="image/*">
         <label class="photo-picker" for="edit-photo-input">
@@ -411,6 +410,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=0.8.1"></script>
+  <script src="./app.js?v=0.9.0"></script>
 </body>
 </html>

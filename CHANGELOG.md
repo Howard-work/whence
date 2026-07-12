@@ -1,5 +1,13 @@
 # Whence Changelog
 
+## v0.9.0 — 2026-07-12
+
+- Made an undated task a Records-only item; Calendar now contains real Whence and Google events only.
+- Automatically creates one linked event when a task receives a date, with title, date, and all-day changes synchronized from either editor on save.
+- Keeps task-only fields separate from event-only duration, location, notes, and reminder fields.
+- Added safe delete, restore, unlink, legacy-link repair, and on-open Google Calendar reconciliation rules.
+- Removed the former manual sync controls and prevented linked task/event pairs from being counted twice in Today and app badges.
+
 ## v0.8.1 — 2026-07-12
 
 - Preserved the iPhone top safe area while the software keyboard is open so modal titles and close controls no longer sit beneath the status bar or Dynamic Island.
