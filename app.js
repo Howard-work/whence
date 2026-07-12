@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.7.2';
+const APP_VERSION = '0.8.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -74,6 +74,10 @@ const state = {
   equipmentAttachment: null,
   equipmentPhotoBusy: false,
   activeScreen: 'records',
+  notebookSpace: '',
+  notebookTag: '',
+  notebookDetailId: '',
+  screenScroll: {},
   equipmentEditingId: '',
   equipmentEditAttachment: null,
   equipmentEditRemoveAttachment: false,
@@ -202,6 +206,8 @@ function toast(msg, withNote = true) {
 async function loadList() {
   $('#list').setAttribute('aria-busy', 'true');
   $('#list').innerHTML = '<p class="empty">載入中…</p>';
+  $('#notebook-list').setAttribute('aria-busy', 'true');
+  if (state.activeScreen === 'notebook') $('#notebook-list').innerHTML = '<p class="empty">札記載入中…</p>';
   try {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 8);
@@ -216,13 +222,16 @@ async function loadList() {
     renderTagChips();
     renderSpaceOptions();
     renderList();
+    renderNotebook();
     showOccasionIfNeeded(records.length);
     updateAppBadge();
   } catch (err) {
     $('#list').innerHTML = `<p class="empty">載入失敗：${escapeHtml(err.message)}</p>`;
+    $('#notebook-list').innerHTML = `<p class="empty">札記載入失敗：${escapeHtml(err.message)}</p>`;
     if (String(err.message).includes('secret')) openSettings('請輸入正確的 SECRET');
   } finally {
     $('#list').setAttribute('aria-busy', 'false');
+    $('#notebook-list').setAttribute('aria-busy', 'false');
   }
 }
 
@@ -382,6 +391,95 @@ function renderGlobalSearch(keyword, filterTag = '') {
     + searchSection('札記', renderRecordCards(byKind('idea')), byKind('idea').length)
     + searchSection('設備', equipmentHtml, equipment.length)
     + searchSection('行程', calendarHtml, calendar.length);
+}
+
+function notebookRecords() {
+  const keyword = $('#notebook-search').value.trim().toLowerCase();
+  return state.records
+    .filter((record) => (record.kind || (record.type === 'todo' ? 'task' : 'note')) === 'idea')
+    .filter((record) => !state.notebookSpace || String(record.space || '') === state.notebookSpace)
+    .filter((record) => !state.notebookTag || String(record.tags || '').split(',').map((tag) => tag.trim().toLowerCase()).includes(state.notebookTag))
+    .filter((record) => !keyword || `${record.content} ${record.tags} ${record.space || ''}`.toLowerCase().includes(keyword))
+    .sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
+}
+
+function notebookTitle(content) {
+  return String(content || '').split(/\r?\n/).map((line) => line.trim()).find(Boolean) || '未命名札記';
+}
+
+function notebookExcerpt(content) {
+  const lines = String(content || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.length > 1 ? lines.slice(1).join(' ') : '';
+}
+
+function notebookBody(content) {
+  const lines = String(content || '').split(/\r?\n/);
+  const titleIndex = lines.findIndex((line) => line.trim());
+  return titleIndex < 0 ? '' : lines.slice(titleIndex + 1).join('\n').trim();
+}
+
+function renderNotebookTags() {
+  const counts = new Map();
+  const labels = new Map();
+  state.records
+    .filter((record) => (record.kind || (record.type === 'todo' ? 'task' : 'note')) === 'idea')
+    .forEach((record) => String(record.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean).forEach((tag) => {
+      const key = tag.toLowerCase();
+      counts.set(key, (counts.get(key) || 0) + 1);
+      if (!labels.has(key)) labels.set(key, tag);
+    }));
+  const tags = [...counts.entries()].sort((a, b) => b[1] - a[1] || labels.get(a[0]).localeCompare(labels.get(b[0]))).slice(0, 8);
+  $('#notebook-tags').innerHTML = tags.length
+    ? tags.map(([key, count]) => `<button type="button" class="chip ${state.notebookTag === key ? 'on' : ''}" data-notebook-tag="${escapeHtml(key)}" aria-pressed="${state.notebookTag === key}">#${escapeHtml(labels.get(key))} (${count})</button>`).join('')
+    : '<span class="notebook-filter-empty">有標籤的札記會顯示在這裡</span>';
+}
+
+function renderNotebook() {
+  const rows = notebookRecords();
+  $('#notebook-count').textContent = `${rows.length} 筆`;
+  document.querySelectorAll('[data-notebook-space]').forEach((button) => {
+    const active = button.dataset.notebookSpace === state.notebookSpace;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  renderNotebookTags();
+  $('#notebook-list').innerHTML = rows.length ? rows.map((record) => {
+    const tags = String(record.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 3)
+      .map((tag) => `<span>#${escapeHtml(tag)}</span>`).join('');
+    const excerpt = notebookExcerpt(record.content);
+    const attachment = parseAttachments(record.attachments)[0];
+    return `<button type="button" class="notebook-card" data-notebook-id="${escapeHtml(record.id)}"><span class="notebook-card-title">${escapeHtml(notebookTitle(record.content))}</span>${excerpt ? `<span class="notebook-card-excerpt">${escapeHtml(excerpt)}</span>` : ''}<span class="notebook-card-meta">${record.space ? `<b>${escapeHtml(record.space)}</b>` : ''}${tags}${attachment ? '<span>照片</span>' : ''}<time>${fmtDate(record.updated_at || record.created_at)}</time></span></button>`;
+  }).join('') : `<div class="empty"><strong>這一頁尚無筆墨</strong><span>${emptyNote('record')}</span></div>`;
+}
+
+function openNotebookDetail(id) {
+  const record = state.records.find((item) => item.id === id && (item.kind || (item.type === 'todo' ? 'task' : 'note')) === 'idea');
+  if (!record) return;
+  state.notebookDetailId = id;
+  $('#notebook-detail-title').textContent = notebookTitle(record.content);
+  const body = notebookBody(record.content);
+  $('#notebook-detail-content').textContent = body;
+  $('#notebook-detail-content').hidden = !body;
+  const tags = String(record.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => `<span>#${escapeHtml(tag)}</span>`).join('');
+  $('#notebook-detail-meta').innerHTML = `${record.space ? `<b>${escapeHtml(record.space)}</b>` : ''}${tags}<time>建立於 ${fmtDate(record.created_at)}</time>${record.updated_at && record.updated_at !== record.created_at ? `<time>修改於 ${fmtDate(record.updated_at)}</time>` : ''}`;
+  const attachment = parseAttachments(record.attachments)[0];
+  const photo = $('#notebook-detail-photo');
+  photo.hidden = !attachment;
+  if (attachment) { photo.dataset.fileId = attachment.file_id; photo.dataset.attachmentAction = 'attachment'; }
+  else { delete photo.dataset.fileId; delete photo.dataset.attachmentAction; }
+  $('#notebook-detail-modal').hidden = false;
+  $('#btn-close-notebook-detail').focus();
+}
+
+function closeNotebookDetail() {
+  $('#notebook-detail-modal').hidden = true;
+  state.notebookDetailId = '';
+}
+
+function editNotebookDetail() {
+  const id = state.notebookDetailId;
+  closeNotebookDetail();
+  if (id) openEdit(id);
 }
 
 function renderTagChips() {
@@ -1609,8 +1707,11 @@ function keepFocusedControlVisible() {
 }
 
 function switchScreen(screen, updateHash = true) {
-  state.activeScreen = ['equipment', 'calendar'].includes(screen) ? screen : 'records';
+  const nextScreen = ['notebook', 'equipment', 'calendar'].includes(screen) ? screen : 'records';
+  state.screenScroll[state.activeScreen] = window.scrollY || 0;
+  state.activeScreen = nextScreen;
   $('#records-screen').hidden = state.activeScreen !== 'records';
+  $('#notebook-screen').hidden = state.activeScreen !== 'notebook';
   $('#equipment-screen').hidden = state.activeScreen !== 'equipment';
   $('#calendar-screen').hidden = state.activeScreen !== 'calendar';
   document.querySelectorAll('.app-nav-btn').forEach((button) => {
@@ -1619,9 +1720,13 @@ function switchScreen(screen, updateHash = true) {
     button.setAttribute('aria-pressed', String(active));
   });
   if (updateHash) history.replaceState(null, '', `#${state.activeScreen}`);
+  if (state.activeScreen === 'notebook') {
+    if (state.records.length) renderNotebook();
+  }
   if (state.activeScreen === 'equipment' && getSecret()) loadEquipment();
   if (state.activeScreen === 'calendar' && getSecret()) loadCalendar();
-  window.scrollTo({ top: 0, behavior: 'instant' });
+  const restoreScroll = () => window.scrollTo({ top: state.screenScroll[state.activeScreen] || 0, behavior: 'instant' });
+  if (window.requestAnimationFrame) window.requestAnimationFrame(restoreScroll); else restoreScroll();
 }
 
 // ===== 初始化 =====
@@ -1712,6 +1817,27 @@ function init() {
 
   $('#list').addEventListener('click', onListClick);
   $('#list').addEventListener('change', onListChange);
+  $('#notebook-search').addEventListener('input', renderNotebook);
+  $('#notebook-spaces').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-notebook-space]');
+    if (!button) return;
+    state.notebookSpace = state.notebookSpace === button.dataset.notebookSpace ? '' : button.dataset.notebookSpace;
+    renderNotebook();
+  });
+  $('#notebook-tags').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-notebook-tag]');
+    if (!button) return;
+    state.notebookTag = state.notebookTag === button.dataset.notebookTag ? '' : button.dataset.notebookTag;
+    renderNotebook();
+  });
+  $('#notebook-list').addEventListener('click', (event) => {
+    const card = event.target.closest('[data-notebook-id]');
+    if (card) openNotebookDetail(card.dataset.notebookId);
+  });
+  $('#btn-close-notebook-detail').addEventListener('click', closeNotebookDetail);
+  $('#notebook-detail-edit').addEventListener('click', editNotebookDetail);
+  $('#notebook-detail-photo').addEventListener('click', (event) => openAttachment(event.currentTarget));
+  $('#notebook-detail-modal').addEventListener('click', (event) => { if (event.target === $('#notebook-detail-modal')) closeNotebookDetail(); });
   document.querySelectorAll('.app-nav-btn').forEach((button) =>
     button.addEventListener('click', () => switchScreen(button.dataset.screen)));
   $('#equipment-photo-input').addEventListener('change', handleEquipmentPhoto);
@@ -1792,20 +1918,21 @@ function init() {
     else if (!$('#trash-modal').hidden) closeTrash();
     else if (!$('#edit-modal').hidden) closeEdit();
     else if (!$('#photo-modal').hidden) closePhotoModal();
+    else if (!$('#notebook-detail-modal').hidden) closeNotebookDetail();
     else if (!$('#settings-modal').hidden) closeSettings();
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.7.2').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.8.0').catch(() => {});
   }
 
   resetCalendarForm();
   renderShanfangDaily();
   checkForAppUpdate();
-  const initialScreen = location.hash === '#equipment' ? 'equipment' : location.hash === '#calendar' ? 'calendar' : 'records';
+  const initialScreen = location.hash === '#notebook' ? 'notebook' : location.hash === '#equipment' ? 'equipment' : location.hash === '#calendar' ? 'calendar' : 'records';
   switchScreen(initialScreen, false);
   if (getSecret()) {
-    if (initialScreen === 'records') loadList();
+    if (['records', 'notebook'].includes(initialScreen)) loadList();
   } else {
     openSettings('第一次使用：貼上你在 GAS 指令碼屬性設定的 SECRET');
   }

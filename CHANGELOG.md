@@ -1,5 +1,12 @@
 # Whence Changelog
 
+## v0.8.0 — 2026-07-12
+
+- Added a dedicated Notebook screen backed by the existing `idea` records, with full-text search, four Space filters, and up to eight frequent tags.
+- Added a quiet preview list that uses the first line as its title and opens a focused full-content reader with photo and edit actions.
+- Changed the bottom navigation to four equal destinations: Records, Notebook, Equipment, and Calendar, while preserving each screen's filters and scroll position.
+- Kept v0.7.2 calendar-task editing, list inclusion, deduplication, and iPhone keyboard fixes in the same public release line.
+
 ## v0.7.2 — 2026-07-12
 
 - Tapping a due task in the calendar month view now opens the full task editor directly.

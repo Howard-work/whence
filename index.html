@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=0.7.2">
+  <link rel="stylesheet" href="./style.css?v=0.8.0">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -118,7 +118,6 @@
       <button type="button" class="view-btn" data-view="all" aria-pressed="false">全部</button>
       <button type="button" class="view-btn active" data-view="today" aria-pressed="true">今日</button>
       <button type="button" class="view-btn" data-view="task" aria-pressed="false">待辦</button>
-      <button type="button" class="view-btn" data-view="idea" aria-pressed="false">札記</button>
       <button type="button" class="view-btn" data-view="note" aria-pressed="false">記事</button>
     </nav>
     <section id="list" aria-busy="false"></section>
@@ -151,6 +150,27 @@
       </div>
     </details>
     <section id="shanfang-note" class="shanfang-note" aria-label="山房按語"><p class="eyebrow">山房按語</p><blockquote id="shanfang-daily"></blockquote></section>
+    </section>
+
+    <section id="notebook-screen" class="app-screen" aria-labelledby="notebook-title" hidden>
+      <section class="notebook-heading">
+        <div><p class="eyebrow">NOTEBOOK</p><h2 id="notebook-title">札記庫</h2></div>
+        <span id="notebook-count" class="notebook-count">0 筆</span>
+      </section>
+      <section class="card notebook-filter" aria-label="札記篩選">
+        <label class="sr-only" for="notebook-search">搜尋札記內容或標籤</label>
+        <input id="notebook-search" type="search" placeholder="搜尋札記內容或標籤…">
+        <div class="notebook-filter-heading"><strong>Space</strong><span>再點一次可取消篩選</span></div>
+        <div id="notebook-spaces" class="notebook-spaces" aria-label="依 Space 篩選札記">
+          <button type="button" data-notebook-space="工作" aria-pressed="false">工作</button>
+          <button type="button" data-notebook-space="生活" aria-pressed="false">生活</button>
+          <button type="button" data-notebook-space="學習" aria-pressed="false">學習</button>
+          <button type="button" data-notebook-space="專案" aria-pressed="false">專案</button>
+        </div>
+        <div class="notebook-filter-heading notebook-tag-heading"><strong>標籤</strong><span>常用前 8 個</span></div>
+        <div id="notebook-tags" class="tag-chips notebook-tags" aria-label="依標籤篩選札記"></div>
+      </section>
+      <section id="notebook-list" class="notebook-list" aria-live="polite" aria-busy="false"></section>
     </section>
 
     <section id="equipment-screen" class="app-screen" aria-labelledby="equipment-title" hidden>
@@ -235,6 +255,7 @@
 
   <nav class="app-nav" aria-label="主要功能">
     <button type="button" class="app-nav-btn active" data-screen="records" aria-pressed="true">記錄</button>
+    <button type="button" class="app-nav-btn" data-screen="notebook" aria-pressed="false">札記</button>
     <button type="button" class="app-nav-btn" data-screen="equipment" aria-pressed="false">設備</button>
     <button type="button" class="app-nav-btn" data-screen="calendar" aria-pressed="false">行程</button>
   </nav>
@@ -259,7 +280,7 @@
       <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
       <button type="button" id="btn-enable-notifications" class="secondary-btn">啟用通知紅點</button>
       <button type="button" id="btn-open-trash" class="secondary-btn">最近刪除</button>
-      <p id="app-version" class="hint">Whence v0.7.2</p>
+      <p id="app-version" class="hint">Whence v0.8.0</p>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
@@ -327,6 +348,21 @@
     </div>
   </div>
 
+  <div id="notebook-detail-modal" class="modal notebook-detail-modal" role="dialog" aria-modal="true" aria-labelledby="notebook-detail-title" hidden>
+    <article class="modal-body card notebook-detail-body">
+      <div class="modal-heading">
+        <div><p class="eyebrow">NOTEBOOK</p><h2 id="notebook-detail-title">札記</h2></div>
+        <button type="button" id="btn-close-notebook-detail" class="icon-btn quiet" aria-label="返回札記庫">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div id="notebook-detail-meta" class="notebook-detail-meta"></div>
+      <div id="notebook-detail-content" class="notebook-detail-content"></div>
+      <button type="button" id="notebook-detail-photo" class="secondary-btn" hidden>查看照片</button>
+      <button type="button" id="notebook-detail-edit" class="save-btn">編輯札記</button>
+    </article>
+  </div>
+
   <div id="equipment-edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="equipment-edit-title" hidden>
     <div class="modal-body card edit-modal-body">
       <div class="modal-heading"><h2 id="equipment-edit-title">編輯設備紀錄</h2><button type="button" id="btn-close-equipment-edit" class="icon-btn quiet" aria-label="關閉設備編輯">×</button></div>
@@ -375,6 +411,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=0.7.2"></script>
+  <script src="./app.js?v=0.8.0"></script>
 </body>
 </html>
