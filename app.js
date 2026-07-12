@@ -1,5 +1,37 @@
 'use strict';
-const APP_VERSION = '0.6.3';
+const APP_VERSION = '0.6.4';
+
+const SHANFANG_COPY = {
+  daily: [
+    { id: 'd01', text: '今日所記，明日所憑。', source: 'Whence 原創' },
+    { id: 'd02', text: '一切皆有來處。', source: 'Whence 原創' },
+    { id: 'd03', text: '留下一筆，便留住一段時光。', source: 'Whence 原創' },
+    { id: 'd04', text: '事情經過之處，文字可以作證。', source: 'Whence 原創' },
+    { id: 'd05', text: '先記下，答案可以晚些再來。', source: 'Whence 原創' },
+    { id: 'd06', text: '有些細節，只在當下清楚。', source: 'Whence 原創' },
+    { id: 'd07', text: '今日留下的，會替未來省下一次追問。', source: 'Whence 原創' },
+    { id: 'd08', text: '不必整理一切，只需留下值得留下的。', source: 'Whence 原創' },
+    { id: 'd09', text: '記錄使來時的路仍可辨認。', source: 'Whence 原創' },
+    { id: 'd10', text: '一頁未必完整，卻足以喚回當時。', source: 'Whence 原創' },
+    { id: 'd11', text: '凡有痕跡，便有回望的可能。', source: 'Whence 原創' },
+    { id: 'd12', text: '今日能寫下的，不必交給遺忘。', source: 'Whence 原創' },
+  ],
+  empty: {
+    task: ['今日諸事已畢。', '今日可留白。'],
+    record: ['此處尚無筆墨。', '尚未留下相關記錄。'],
+    equipment: ['今日諸機安然。', '尚無設備事件。'],
+    search: ['此處尚無足跡。', '或許，它還未被記下。'],
+    calendar: ['今日尚無行程。', '此日仍有餘白。'],
+  },
+  toast: {
+    save: ['已留下一筆。', '此事可追。'],
+    update: ['已補其闕。', '已重新落筆。'],
+    delete: ['已移入舊卷。'],
+  },
+};
+
+const previousOpenAt = Number(localStorage.getItem('whence_last_open') || 0);
+localStorage.setItem('whence_last_open', String(Date.now()));
 
 // ===== 設定 =====
 const API_URL = 'https://script.google.com/macros/s/AKfycbxfaA0qyKmyJLJ5m2edJNd1mh2iFpUKvVahDejUHfJoWQ0xc1lj8z6qeIh88jhSQVK5zw/exec';
@@ -48,6 +80,7 @@ const state = {
   calendarSelected: new Date(),
   calendarView: 'month',
   customerAliases: {},
+  occasionChecked: false,
 };
 
 // secret 僅為連線憑證（非資料），存 localStorage 免重複輸入
@@ -111,13 +144,55 @@ function parseAttachments(raw) {
   }
 }
 
+function textHash(value) { return [...String(value)].reduce((sum, char) => ((sum * 31) + char.charCodeAt(0)) >>> 0, 7); }
+function pickCopy(items, seed) { return items[textHash(seed) % items.length]; }
+function emptyNote(category) { const items = SHANFANG_COPY.empty[category] || SHANFANG_COPY.empty.record; return pickCopy(items, `${category}-${new Date().toDateString()}`); }
+
+function renderShanfangDaily() {
+  const day = new Date();
+  const seed = `${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}`;
+  $('#shanfang-daily').textContent = pickCopy(SHANFANG_COPY.daily, seed).text;
+}
+
+function showOccasionIfNeeded(count) {
+  if (state.occasionChecked) return;
+  state.occasionChecked = true;
+  const milestoneCopy = { 1: '第一筆已留下 · 此事有了來處。', 100: '已留下百筆 · 許多細節因而未曾走失。', 1000: '已成千筆 · 來時之路仍清晰可辨。' };
+  if (milestoneCopy[count] && !localStorage.getItem(`whence_milestone_${count}`)) {
+    localStorage.setItem(`whence_milestone_${count}`, 'shown');
+    toast(milestoneCopy[count], false);
+    return;
+  }
+  const awayDays = previousOpenAt ? (Date.now() - previousOpenAt) / 86400000 : 0;
+  if (awayDays >= 14 && !localStorage.getItem(`whence_return_${new Date(previousOpenAt).toDateString()}`)) {
+    localStorage.setItem(`whence_return_${new Date(previousOpenAt).toDateString()}`, 'shown');
+    toast(pickCopy(['好久不見，山房依舊。', '又見故人，今日仍可留下一筆。'], new Date().toDateString()), false);
+  }
+}
+
+function toastNoteFor(message) {
+  let category = '';
+  if (/刪除|最近刪除/.test(message)) category = 'delete';
+  else if (/更新|修改|轉為|復原/.test(message)) category = 'update';
+  else if (/儲存|建立|留下/.test(message)) category = 'save';
+  if (!category) return '';
+  const items = SHANFANG_COPY.toast[category];
+  const lastKey = `whence_last_copy_${category}`;
+  const last = localStorage.getItem(lastKey);
+  const choices = items.filter((item) => item !== last);
+  const picked = choices[Math.floor(Math.random() * choices.length)] || items[0];
+  localStorage.setItem(lastKey, picked);
+  return picked;
+}
+
 let toastTimer;
-function toast(msg) {
+function toast(msg, withNote = true) {
   const el = $('#toast');
-  el.textContent = msg;
+  const note = withNote ? toastNoteFor(msg) : '';
+  el.textContent = note ? `${msg} · ${note}` : msg;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 2500);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 1900);
 }
 
 // ===== 清單 =====
@@ -138,6 +213,7 @@ async function loadList() {
     renderTagChips();
     renderSpaceOptions();
     renderList();
+    showOccasionIfNeeded(records.length);
     updateAppBadge();
   } catch (err) {
     $('#list').innerHTML = `<p class="empty">載入失敗：${escapeHtml(err.message)}</p>`;
@@ -248,7 +324,8 @@ function sameLocalDay(value, reference = new Date()) {
 }
 
 function renderTodaySection(title, rows, emptyText) {
-  return `<section class="today-section"><div class="today-section-heading"><h3>${title}</h3><span>${rows.length}</span></div>${rows.length ? renderRecordCards(rows) : `<p class="today-empty">${emptyText}</p>`}</section>`;
+  const category = title.includes('到期') ? 'task' : 'record';
+  return `<section class="today-section"><div class="today-section-heading"><h3>${title}</h3><span>${rows.length}</span></div>${rows.length ? renderRecordCards(rows) : `<p class="today-empty">${emptyText}<small>${emptyNote(category)}</small></p>`}</section>`;
 }
 
 function renderTodayCalendarSection() {
@@ -258,7 +335,7 @@ function renderTodayCalendarSection() {
     const time = record.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     return `<button type="button" class="today-calendar-item" data-today-calendar-id="${escapeHtml(record.id)}"><span>${escapeHtml(time)}</span><strong>${escapeHtml(record.title)}</strong>${record.location ? `<small>${escapeHtml(record.location)}</small>` : ''}</button>`;
   }).join('');
-  return `<section class="today-section"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || '<p class="today-empty">今天沒有行程</p>'}</section>`;
+  return `<section class="today-section"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || `<p class="today-empty">今天沒有行程<small>${emptyNote('calendar')}</small></p>`}</section>`;
 }
 
 function renderList() {
@@ -278,11 +355,11 @@ function renderList() {
       + renderTodaySection('今日新增', created, '今天還沒有新增記錄');
     return;
   }
-  $('#list').innerHTML = rows.length ? renderRecordCards(rows) : '<div class="empty"><strong>目前沒有符合的記錄</strong><span>新增一筆，或調整上方的搜尋與篩選條件。</span></div>';
+  $('#list').innerHTML = rows.length ? renderRecordCards(rows) : `<div class="empty"><strong>目前沒有符合的記錄</strong><span>${emptyNote('record')}</span></div>`;
 }
 
 function searchSection(title, html, count) {
-  return `<section class="today-section search-section"><div class="today-section-heading"><h3>${title}</h3><span>${count}</span></div>${html || '<p class="today-empty">沒有符合結果</p>'}</section>`;
+  return `<section class="today-section search-section"><div class="today-section-heading"><h3>${title}</h3><span>${count}</span></div>${html || `<p class="today-empty">沒有符合結果<small>${emptyNote('search')}</small></p>`}</section>`;
 }
 
 function renderGlobalSearch(keyword, filterTag = '') {
@@ -940,7 +1017,7 @@ function renderEquipmentList() {
   const rows = state.equipmentRecords.filter((r) => (!pair || (r.customer === pair[0] && r.machine === pair[1])) && (!statusFilter || r.status === statusFilter || (r.status === 'active' && statusFilter === 'recurring')) && equipmentMatchesKeyword(r, keyword) && timelineDateAllowed(r.occurred_at || r.created_at));
   $('#equipment-timeline-context').textContent = `${pair ? `${pair[0] ? `${pair[0]} · ` : ''}${pair[1]} · ` : ''}${rows.length} 筆設備紀錄`;
   if (!rows.length) {
-    $('#equipment-list').innerHTML = '<div class="empty"><strong>還沒有設備紀錄</strong><span>留下第一筆，下次就能從這裡回想。</span></div>';
+    $('#equipment-list').innerHTML = `<div class="empty"><strong>還沒有設備紀錄</strong><span>${emptyNote('equipment')}</span></div>`;
     return;
   }
   $('#equipment-list').innerHTML = rows.map((r) => {
@@ -1201,7 +1278,7 @@ function renderMonthCalendar() {
 function renderCalendarList() {
   const kw = $('#calendar-search').value.trim().toLowerCase();
   const rows = state.calendarRecords.filter((r) => !kw || `${r.title} ${r.location} ${r.notes}`.toLowerCase().includes(kw));
-  if (!rows.length) { $('#calendar-list').innerHTML = '<div class="empty"><strong>還沒有行程</strong><span>新增後會同步到 Google Calendar。</span></div>'; return; }
+  if (!rows.length) { $('#calendar-list').innerHTML = `<div class="empty"><strong>還沒有行程</strong><span>${emptyNote('calendar')}</span></div>`; return; }
   $('#calendar-list').innerHTML = rows.map((r) => {
     const start = new Date(r.start_time);
     const time = r.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1464,10 +1541,11 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.6.3').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.6.4').catch(() => {});
   }
 
   resetCalendarForm();
+  renderShanfangDaily();
   checkForAppUpdate();
   const initialScreen = location.hash === '#equipment' ? 'equipment' : location.hash === '#calendar' ? 'calendar' : 'records';
   switchScreen(initialScreen, false);

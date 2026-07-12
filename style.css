@@ -50,6 +50,7 @@ body.batch-mode main { padding-bottom: 88px; }
 #records-screen > .capture-card { order: 1; }
 #records-screen > #records-panel { order: 2; }
 #records-screen > #search-panel { order: 3; }
+#records-screen > #shanfang-note { order: 4; }
 
 button,
 input,
@@ -75,6 +76,8 @@ button { cursor: pointer; }
 .collapsible-body .view-nav { top: calc(6px + env(safe-area-inset-top)); margin-bottom: 14px; }
 #search-panel .filter-bar, #equipment-history-panel .filter-bar { margin: 0; }
 #search-panel .batch-toggle { margin-bottom: 10px; }
+.shanfang-note { margin: 6px 4px 28px; padding: 14px 16px; border-left: 2px solid var(--border); color: var(--muted); }
+.shanfang-note blockquote { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
 
 [hidden] { display: none !important; }
 
@@ -486,6 +489,7 @@ textarea {
 .today-section-heading h3 { margin: 0; font-size: 17px; }
 .today-section-heading span { min-width: 28px; padding: 2px 8px; border-radius: 999px; background: var(--surface-strong); color: var(--muted); text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
 .today-empty { margin: 0; padding: 15px 16px; border: 1px dashed var(--border); border-radius: var(--radius-md); color: var(--subtle); }
+.today-empty small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .today-calendar-item { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 3px 12px; width: 100%; min-height: 56px; margin-bottom: 8px; padding: 12px 14px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-md); background: var(--surface); color: var(--text); text-align: left; }
 .today-calendar-item > span { grid-row: 1 / span 2; align-self: center; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
 .today-calendar-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

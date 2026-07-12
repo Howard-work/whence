@@ -1,5 +1,12 @@
 # Whence Changelog
 
+## v0.6.4 — 2026-07-12
+
+- Added the quiet "山房按語" writing system with one stable daily line at the bottom of Records.
+- Added restrained copy for empty states and brief secondary notes after successful actions.
+- Added one-time notes for the first, 100th, and 1000th record, plus a welcome-back note after 14 days.
+- All initial copy is Whence original writing; functional messages always appear first.
+
 ## v0.6.3 — 2026-07-11
 
 - Converted Records, Search, and Equipment History into consistent collapsible panels.
