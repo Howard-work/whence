@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.6.6';
+const APP_VERSION = '0.7.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -67,6 +67,9 @@ const state = {
   editRemoveAttachment: false,
   editHadAttachment: false,
   editPhotoBusy: false,
+  editSyncCalendar: false,
+  editLinkedCalendar: null,
+  editCalendarPreviewLoading: false,
   equipmentRecords: [],
   equipmentAttachment: null,
   equipmentPhotoBusy: false,
@@ -593,6 +596,90 @@ function localDateParts(value) {
 
 function updateEditKindUI() {
   $('#edit-task-options').hidden = $('#edit-kind').value !== 'task';
+  renderTaskCalendarSync();
+}
+
+function syncTimeLabel(value, allDay) {
+  if (!value) return '未設定時間';
+  const date = new Date(value);
+  if (isNaN(date)) return '未設定時間';
+  const dateLabel = date.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+  if (allDay) return `${dateLabel} 全天`;
+  return `${dateLabel} ${date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+}
+
+function editedTaskSyncData(record) {
+  const date = $('#edit-due-date').value;
+  const time = $('#edit-due-time').value;
+  return {
+    title: $('#edit-content').value.trim() || record.content || '',
+    due_date: date ? (time ? `${date}T${time}:00+08:00` : `${date}T00:00:00+08:00`) : '',
+    all_day: !!date && !time,
+  };
+}
+
+function renderTaskCalendarSync() {
+  const card = $('#edit-calendar-sync');
+  const checkbox = $('#edit-sync-calendar');
+  const preview = $('#edit-calendar-sync-preview');
+  const record = state.records.find((item) => item.id === state.editingId);
+  const kind = $('#edit-kind').value;
+  const linked = record && kind === 'task' && record.calendar_id;
+  card.hidden = !linked;
+  if (!linked) {
+    state.editSyncCalendar = false;
+    checkbox.checked = false;
+    $('#btn-save-edit').textContent = '儲存修改';
+    return;
+  }
+
+  const next = editedTaskSyncData(record);
+  checkbox.checked = state.editSyncCalendar;
+  checkbox.disabled = !next.due_date || state.editCalendarPreviewLoading || !!state.editCalendarPreviewError;
+  $('#btn-save-edit').textContent = state.editSyncCalendar ? '儲存並同步行程' : '儲存修改';
+  if (!next.due_date) {
+    state.editSyncCalendar = false;
+    checkbox.checked = false;
+    $('#btn-save-edit').textContent = '儲存修改';
+    preview.textContent = '待辦尚未設定到期時間，因此不會同步到行程。';
+    return;
+  }
+  if (state.editCalendarPreviewLoading) { preview.textContent = '正在讀取已關聯行程…'; return; }
+  if (state.editCalendarPreviewError) { preview.textContent = state.editCalendarPreviewError; return; }
+  if (!state.editSyncCalendar) {
+    preview.textContent = '不勾選時，只會儲存待辦本身。';
+    return;
+  }
+  if (!state.editLinkedCalendar) { preview.textContent = '找不到已關聯行程，無法安全同步。'; return; }
+
+  const event = state.editLinkedCalendar;
+  const changes = [];
+  if (String(event.title || '') !== next.title) changes.push(`名稱：${event.title || '未命名'} → ${next.title}`);
+  const sameTime = new Date(event.start_time).getTime() === new Date(next.due_date).getTime() && (event.all_day === 'Y') === next.all_day;
+  if (!sameTime) changes.push(`時間：${syncTimeLabel(event.start_time, event.all_day === 'Y')} → ${syncTimeLabel(next.due_date, next.all_day)}`);
+  preview.textContent = changes.length ? `儲存後將更新行程\n${changes.join('\n')}` : '名稱與時間已一致；儲存待辦後不需要變更行程。';
+}
+
+async function loadLinkedCalendarForEdit(record) {
+  if (!record?.calendar_id) return;
+  state.editCalendarPreviewLoading = true;
+  state.editCalendarPreviewError = '';
+  renderTaskCalendarSync();
+  try {
+    const records = await apiGet({ action: 'calendar_list' });
+    const linked = records.find((item) => item.id === record.calendar_id) || null;
+    if (state.editingId !== record.id) return;
+    state.editLinkedCalendar = linked;
+    if (!linked) state.editCalendarPreviewError = '找不到已關聯行程，請先從行程頁確認連結。';
+  } catch (_) {
+    if (state.editingId !== record.id) return;
+    state.editCalendarPreviewError = '暫時無法讀取已關聯行程，為避免誤改已暫停同步。';
+  } finally {
+    if (state.editingId === record.id) {
+      state.editCalendarPreviewLoading = false;
+      renderTaskCalendarSync();
+    }
+  }
 }
 
 function updateEditFlags() {
@@ -650,6 +737,10 @@ function openEdit(id) {
   state.editAttachment = null;
   state.editRemoveAttachment = false;
   state.editHadAttachment = parseAttachments(record.attachments).length > 0;
+  state.editSyncCalendar = false;
+  state.editLinkedCalendar = null;
+  state.editCalendarPreviewLoading = false;
+  state.editCalendarPreviewError = '';
   $('#edit-content').value = record.content || '';
   $('#edit-kind').value = kind;
   $('#edit-space').value = record.space || '';
@@ -663,6 +754,7 @@ function openEdit(id) {
   state.editDirty = false;
   $('#edit-modal').hidden = false;
   $('#edit-content').focus();
+  if (kind === 'task' && record.calendar_id) loadLinkedCalendarForEdit(record);
 }
 
 function closeEdit(force = false) {
@@ -670,6 +762,10 @@ function closeEdit(force = false) {
   $('#edit-modal').hidden = true;
   state.editingId = '';
   state.editDirty = false;
+  state.editSyncCalendar = false;
+  state.editLinkedCalendar = null;
+  state.editCalendarPreviewLoading = false;
+  state.editCalendarPreviewError = '';
 }
 
 async function saveEdit() {
@@ -706,13 +802,22 @@ async function saveEdit() {
     data.due_date = '';
     data.all_day = false;
   }
+  const syncCalendar = kind === 'task' && state.editSyncCalendar && !!record.calendar_id;
   const button = $('#btn-save-edit');
   button.disabled = true;
   button.textContent = '儲存中…';
   try {
     await apiPost('update', data);
+    let syncError = '';
+    if (syncCalendar) {
+      try {
+        await apiPost('task_calendar_sync', { direction: 'task_to_calendar', task_id: record.id });
+      } catch (err) {
+        syncError = err.message;
+      }
+    }
     closeEdit(true);
-    toast('修改已儲存');
+    toast(syncError ? `待辦已儲存；行程未同步：${syncError}` : (syncCalendar ? '待辦與行程已更新' : '修改已儲存'));
     await loadList();
   } catch (err) {
     toast(`儲存失敗：${err.message}`);
@@ -1223,6 +1328,7 @@ function renderCalendarTaskOptions() {
   const tasks = state.records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === 'task' && !['done', 'cancelled'].includes(r.status));
   $('#calendar-linked-task').innerHTML = '<option value="">不關聯</option>' + tasks.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.content)}</option>`).join('');
   if (tasks.some((r) => r.id === current)) $('#calendar-linked-task').value = current;
+  renderCalendarTaskSync();
 }
 
 async function loadCalendar() {
@@ -1290,6 +1396,47 @@ function renderCalendarList() {
   }).join('');
 }
 
+function calendarFormSaveLabel() {
+  return $('#calendar-editing-id').value ? '更新行程' : '儲存行程';
+}
+
+function renderCalendarTaskSync() {
+  const card = $('#calendar-task-sync');
+  const checkbox = $('#calendar-sync-task');
+  const preview = $('#calendar-sync-task-preview');
+  const taskId = $('#calendar-linked-task').value;
+  const task = state.records.find((item) => item.id === taskId);
+  card.hidden = !taskId;
+  if (!taskId) {
+    checkbox.checked = false;
+    checkbox.disabled = false;
+    $('#btn-save-calendar').textContent = calendarFormSaveLabel();
+    return;
+  }
+  checkbox.disabled = !task;
+  if (!task) {
+    checkbox.checked = false;
+    preview.textContent = '找不到已關聯待辦，無法安全同步。';
+    $('#btn-save-calendar').textContent = calendarFormSaveLabel();
+    return;
+  }
+  $('#btn-save-calendar').textContent = checkbox.checked ? `${$('#calendar-editing-id').value ? '更新' : '儲存'}並同步待辦` : calendarFormSaveLabel();
+  if (!checkbox.checked) {
+    preview.textContent = '不勾選時，只會儲存行程本身。';
+    return;
+  }
+  const start = $('#calendar-start').value;
+  const allDay = $('#calendar-all-day').checked;
+  const nextTitle = $('#calendar-title-input').value.trim() || '未命名';
+  if (!start) { preview.textContent = '請先填寫行程開始時間，才能同步待辦。'; return; }
+  const changes = [];
+  if (String(task.content || '') !== nextTitle) changes.push(`名稱：${task.content || '未命名'} → ${nextTitle}`);
+  const nextDue = `${start}:00+08:00`;
+  const sameTime = task.due_date && new Date(task.due_date).getTime() === new Date(nextDue).getTime() && (task.all_day === 'Y') === allDay;
+  if (!sameTime) changes.push(`到期：${syncTimeLabel(task.due_date, task.all_day === 'Y')} → ${syncTimeLabel(nextDue, allDay)}`);
+  preview.textContent = changes.length ? `儲存後將更新待辦\n${changes.join('\n')}` : '名稱與時間已一致；儲存行程後不需要變更待辦。';
+}
+
 function calendarPayload() {
   const allDay = $('#calendar-all-day').checked;
   const startValue = $('#calendar-start').value;
@@ -1302,9 +1449,11 @@ function resetCalendarForm() {
   $('#calendar-editing-id').value = '';
   $('#calendar-title-input').value = ''; $('#calendar-location').value = ''; $('#calendar-notes').value = '';
   $('#calendar-all-day').checked = false; $('#calendar-end-wrap').hidden = false; $('#calendar-reminder').value = '30'; $('#calendar-linked-task').value = '';
+  $('#calendar-sync-task').checked = false;
   $('#calendar-title').textContent = '新增行程';
   $('#btn-save-calendar').textContent = '儲存行程'; $('#btn-cancel-calendar-edit').hidden = true;
   setCalendarDefaults();
+  renderCalendarTaskSync();
 }
 
 function closeCalendarEdit() {
@@ -1318,8 +1467,18 @@ async function saveCalendar() {
     if (!data.title) throw new Error('請填寫行程名稱');
     const id = $('#calendar-editing-id').value;
     if (id) data.id = id;
-    await apiPost(id ? 'calendar_update' : 'calendar_create', data);
-    toast(id ? '行程已更新' : '行程已建立'); closeCalendarEdit(); await loadCalendar();
+    const syncTask = $('#calendar-sync-task').checked && !!data.linked_event_id;
+    const saved = await apiPost(id ? 'calendar_update' : 'calendar_create', data);
+    let syncError = '';
+    if (syncTask) {
+      try {
+        await apiPost('task_calendar_sync', { direction: 'calendar_to_task', calendar_id: saved.id });
+      } catch (err) {
+        syncError = err.message;
+      }
+    }
+    toast(syncError ? `行程已儲存；待辦未同步：${syncError}` : (syncTask ? '行程與待辦已更新' : (id ? '行程已更新' : '行程已建立')));
+    closeCalendarEdit(); await loadCalendar();
   } catch (err) { toast(err.message); }
 }
 
@@ -1333,8 +1492,9 @@ function editCalendar(id) {
   $('#calendar-form').hidden = false;
   $('#calendar-editing-id').value = r.id; $('#calendar-title-input').value = r.title || ''; $('#calendar-location').value = r.location || ''; $('#calendar-notes').value = r.notes || '';
   $('#calendar-all-day').checked = r.all_day === 'Y'; $('#calendar-end-wrap').hidden = r.all_day === 'Y'; $('#calendar-start').value = localDateTimeValue(r.start_time); $('#calendar-end').value = localDateTimeValue(r.end_time); $('#calendar-reminder').value = String(r.reminder_minutes || '0'); $('#calendar-linked-task').value = r.linked_event_id || '';
+  $('#calendar-sync-task').checked = false;
   $('#calendar-title').textContent = '編輯行程';
-  $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
+  $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; renderCalendarTaskSync(); window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function updateAppBadge() {
@@ -1445,7 +1605,16 @@ function init() {
   $('#btn-remove-edit-photo').addEventListener('click', removeEditPhoto);
   $('#edit-kind').addEventListener('change', () => { state.editDirty = true; updateEditKindUI(); });
   ['#edit-content', '#edit-space', '#edit-tags', '#edit-due-date', '#edit-due-time'].forEach((selector) =>
-    $(selector).addEventListener('input', () => { state.editDirty = true; }));
+    $(selector).addEventListener('input', () => { state.editDirty = true; if (state.editSyncCalendar) renderTaskCalendarSync(); }));
+  $('#edit-sync-calendar').addEventListener('change', async () => {
+    state.editSyncCalendar = $('#edit-sync-calendar').checked;
+    state.editDirty = true;
+    if (state.editSyncCalendar && !state.editLinkedCalendar && !state.editCalendarPreviewLoading) {
+      const record = state.records.find((item) => item.id === state.editingId);
+      if (record) await loadLinkedCalendarForEdit(record);
+    }
+    renderTaskCalendarSync();
+  });
   $('#edit-important').addEventListener('click', () => {
     state.editImportant = !state.editImportant; state.editDirty = true; updateEditFlags();
   });
@@ -1517,7 +1686,10 @@ function init() {
         .catch((err) => toast(`刪除失敗：${err.message}`));
     }
   });
-  $('#calendar-all-day').addEventListener('change', () => { $('#calendar-end-wrap').hidden = $('#calendar-all-day').checked; });
+  $('#calendar-all-day').addEventListener('change', () => { $('#calendar-end-wrap').hidden = $('#calendar-all-day').checked; renderCalendarTaskSync(); });
+  $('#calendar-linked-task').addEventListener('change', () => { $('#calendar-sync-task').checked = false; renderCalendarTaskSync(); });
+  $('#calendar-sync-task').addEventListener('change', renderCalendarTaskSync);
+  ['#calendar-title-input', '#calendar-start', '#calendar-end'].forEach((selector) => $(selector).addEventListener('input', renderCalendarTaskSync));
   $('#calendar-add').addEventListener('click', () => { resetCalendarForm(); $('#calendar-form').hidden = false; $('#calendar-title-input').focus(); });
   $('#calendar-prev').addEventListener('click', () => moveCalendarMonth(-1));
   $('#calendar-next').addEventListener('click', () => moveCalendarMonth(1));
@@ -1555,7 +1727,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.6.6').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.7.0').catch(() => {});
   }
 
   resetCalendarForm();

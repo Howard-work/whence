@@ -1,5 +1,12 @@
 # Whence Changelog
 
+## v0.7.0 — 2026-07-12
+
+- Added explicit, previewed task ↔ Whence calendar synchronization for already-linked items.
+- Task-to-calendar sync updates title, due time, and all-day state while retaining the event's duration, location, notes, and reminder.
+- Calendar-to-task sync updates only task title and due time; it never changes task status, tags, or Space.
+- External Google Calendar events remain read-only and are never eligible for synchronization.
+
 ## v0.6.6 — 2026-07-12
 
 - Calendar event editing now changes the form heading from 「新增行程」 to 「編輯行程」.
