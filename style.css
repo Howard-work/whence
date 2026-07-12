@@ -21,6 +21,8 @@
   --radius-lg: 20px;
   --touch: 48px;
   --focus: 0 0 0 3px rgba(130, 170, 255, 0.34);
+  --visual-viewport-height: 100dvh;
+  --visual-viewport-top: 0px;
 }
 
 * { box-sizing: border-box; }
@@ -505,9 +507,12 @@ textarea {
 .form-actions { display: flex; gap: 10px; align-items: center; }
 .form-actions .save-btn { flex: 1; }
 .calendar-item { border-left: 3px solid var(--accent); }
-.calendar-item-time { min-width: 68px; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.calendar-task-item { border-left-color: var(--ok); }
+.calendar-item-time { min-width: 84px; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.calendar-task-item .calendar-item-time { color: var(--ok); }
 .calendar-item .item-main { min-width: 0; }
 .calendar-item-actions { display: flex; gap: 6px; }
+.calendar-item-actions button { min-height: 44px; margin: 0; padding: 8px 10px; }
 .calendar-toolbar { margin-bottom: 14px; }
 .calendar-nav-row, .calendar-toolbar-actions { display: flex; align-items: center; gap: 8px; }
 .calendar-nav-row { justify-content: space-between; }
@@ -979,10 +984,14 @@ textarea::placeholder { color: #7f8aa0; }
 .modal {
   position: fixed;
   z-index: 60;
-  inset: 0;
+  top: var(--visual-viewport-top);
+  right: 0;
+  bottom: auto;
+  left: 0;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  height: var(--visual-viewport-height);
   padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
   background: rgba(3, 7, 15, 0.72);
   backdrop-filter: blur(6px);
@@ -1010,10 +1019,14 @@ textarea::placeholder { color: #7f8aa0; }
 .photo-modal .modal-body { max-width: 620px; }
 
 .edit-modal-body {
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(var(--visual-viewport-height) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+body.keyboard-open .app-nav { display: none; }
+body.keyboard-open .modal { align-items: flex-end; padding: 8px 12px; }
+body.keyboard-open .modal-body { max-height: calc(var(--visual-viewport-height) - 16px); border-radius: 20px; overflow-y: auto; }
 
 .edit-grid {
   display: grid;
@@ -1120,6 +1133,8 @@ textarea::placeholder { color: #7f8aa0; }
   .item { gap: 8px; padding: 11px; }
   .item input[type="checkbox"] { width: 44px; height: 44px; flex-basis: 44px; }
   .item-actions select { min-width: 88px; max-width: 96px; }
+  .calendar-item { display: grid; grid-template-columns: 84px minmax(0, 1fr); }
+  .calendar-item-actions { grid-column: 2; justify-content: flex-end; }
   #batch-bar {
     grid-template-columns: 1fr 1fr auto;
     gap: 6px;

@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.7.1';
+const APP_VERSION = '0.7.2';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1364,7 +1364,7 @@ function calendarItemsForDay(date) {
   const key = dayKey(date);
   const events = state.calendarRecords.filter((r) => dayKey(r.start_time) === key).map((r) => ({ type: 'event', data: r }));
   const linked = new Set(events.map((x) => x.data.linked_event_id).filter(Boolean));
-  const tasks = state.records.filter((r) => (r.kind || '') === 'task' && r.due_date && dayKey(r.due_date) === key && !linked.has(r.id) && !['done', 'cancelled'].includes(r.status)).map((r) => ({ type: 'task', data: r }));
+  const tasks = state.records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === 'task' && r.due_date && dayKey(r.due_date) === key && !linked.has(r.id) && !['done', 'cancelled'].includes(r.status)).map((r) => ({ type: 'task', data: r }));
   return events.concat(tasks).sort((a, b) => new Date(a.data.start_time || a.data.due_date) - new Date(b.data.start_time || b.data.due_date));
 }
 
@@ -1387,14 +1387,36 @@ function renderMonthCalendar() {
     : `<button type="button" class="calendar-day-entry task" data-task-id="${escapeHtml(item.data.id)}"><span>待辦</span><strong>${escapeHtml(item.data.content)}</strong></button>`).join('') : '<p class="today-empty">這天沒有行程或到期待辦</p>';
 }
 
+function calendarListItems() {
+  const linkedTaskIds = new Set(state.calendarRecords.map((record) => record.linked_event_id).filter(Boolean));
+  const rangeStart = new Date(state.calendarCursor); rangeStart.setDate(rangeStart.getDate() - 7);
+  const rangeEnd = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 2, 8);
+  const tasks = state.records
+    .filter((record) => (record.kind || (record.type === 'todo' ? 'task' : 'note')) === 'task' && record.due_date && !linkedTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status))
+    .filter((record) => { const due = new Date(record.due_date); return due >= rangeStart && due <= rangeEnd; })
+    .map((data) => ({ type: 'task', date: data.due_date, data }));
+  return state.calendarRecords.map((data) => ({ type: 'event', date: data.start_time, data }))
+    .concat(tasks)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
 function renderCalendarList() {
   const kw = $('#calendar-search').value.trim().toLowerCase();
-  const rows = state.calendarRecords.filter((r) => !kw || `${r.title} ${r.location} ${r.notes}`.toLowerCase().includes(kw));
-  if (!rows.length) { $('#calendar-list').innerHTML = `<div class="empty"><strong>還沒有行程</strong><span>${emptyNote('calendar')}</span></div>`; return; }
-  $('#calendar-list').innerHTML = rows.map((r) => {
-    const start = new Date(r.start_time);
-    const time = r.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const rows = calendarListItems().filter((item) => {
+    const data = item.data;
+    const text = item.type === 'event' ? `${data.title} ${data.location} ${data.notes}` : `${data.content} ${data.tags} ${data.space} ${STATUS_LABELS[data.status] || ''}`;
+    return !kw || text.toLowerCase().includes(kw);
+  });
+  if (!rows.length) { $('#calendar-list').innerHTML = `<div class="empty"><strong>還沒有行程或到期待辦</strong><span>${emptyNote('calendar')}</span></div>`; return; }
+  $('#calendar-list').innerHTML = rows.map((item) => {
+    const r = item.data;
+    const start = new Date(item.date);
+    const allDay = r.all_day === 'Y';
+    const time = allDay ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     const day = start.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' });
+    if (item.type === 'task') {
+      return `<article class="item calendar-item calendar-task-item" data-task-id="${escapeHtml(r.id)}"><div class="calendar-item-time">${escapeHtml(day)}<br>${escapeHtml(time)}</div><div class="item-main"><div class="item-content">${escapeHtml(r.content)}</div><div class="item-meta"><span class="badge kind-task">待辦</span>${r.space ? `<span class="space-meta">${escapeHtml(r.space)}</span>` : ''}<span>${escapeHtml(STATUS_LABELS[r.status] || '待辦')}</span></div></div><div class="calendar-item-actions"><button class="secondary-btn" data-calendar-task-act="edit">編輯待辦</button></div></article>`;
+    }
     return `<article class="item calendar-item" data-id="${escapeHtml(r.id)}"><div class="calendar-item-time">${escapeHtml(day)}<br>${escapeHtml(time)}</div><div class="item-main"><div class="item-content">${escapeHtml(r.title)}</div><div class="item-meta">${r.location ? `<span>${escapeHtml(r.location)}</span>` : ''}${r.linked_event_id ? '<span class="space-meta">已關聯待辦</span>' : ''}${r.read_only ? '<span class="space-meta">Google 日曆 · 唯讀</span>' : `<span>提前 ${escapeHtml(r.reminder_minutes || '0')} 分鐘</span>`}</div></div>${r.read_only ? '' : '<div class="calendar-item-actions"><button class="secondary-btn" data-calendar-act="edit">編輯</button><button class="del-btn" data-calendar-act="delete">刪除</button></div>'}</article>`;
   }).join('');
 }
@@ -1566,6 +1588,26 @@ async function restoreTrashItem(item) {
   } catch (err) { button.disabled = false; toast(`復原失敗：${err.message}`); }
 }
 
+function syncVisualViewport() {
+  const viewport = window.visualViewport;
+  const root = document.documentElement;
+  const height = Math.round(viewport?.height || window.innerHeight || root?.clientHeight || 0);
+  const offsetTop = Math.round(viewport?.offsetTop || 0);
+  if (height && root?.style) {
+    root.style.setProperty('--visual-viewport-height', `${height}px`);
+    root.style.setProperty('--visual-viewport-top', `${offsetTop}px`);
+  }
+  const layoutHeight = Math.max(window.innerHeight || 0, root?.clientHeight || 0, height);
+  const keyboardOpen = !!viewport && layoutHeight - height > 120;
+  document.body.classList.toggle('keyboard-open', keyboardOpen);
+}
+
+function keepFocusedControlVisible() {
+  const active = document.activeElement;
+  if (!document.body.classList.contains?.('keyboard-open') || !active?.matches?.('input, textarea, select')) return;
+  setTimeout(() => active.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 120);
+}
+
 function switchScreen(screen, updateHash = true) {
   state.activeScreen = ['equipment', 'calendar'].includes(screen) ? screen : 'records';
   $('#records-screen').hidden = state.activeScreen !== 'records';
@@ -1584,6 +1626,11 @@ function switchScreen(screen, updateHash = true) {
 
 // ===== 初始化 =====
 function init() {
+  syncVisualViewport();
+  window.visualViewport?.addEventListener('resize', syncVisualViewport);
+  window.visualViewport?.addEventListener('scroll', syncVisualViewport);
+  window.addEventListener?.('resize', syncVisualViewport);
+  document.addEventListener('focusin', keepFocusedControlVisible);
   setActiveKind(KIND_LABELS[state.activeKind] ? state.activeKind : 'note');
   $('#space').value = localStorage.getItem('whence_last_space') || '';
   syncSpaceButtons();
@@ -1713,11 +1760,17 @@ function init() {
   $('#calendar-view-month').addEventListener('click', () => setCalendarView('month'));
   $('#calendar-view-list').addEventListener('click', () => setCalendarView('list'));
   $('#calendar-grid').addEventListener('click', (event) => { const day = event.target.closest('[data-calendar-date]'); if (!day) return; state.calendarSelected = new Date(`${day.dataset.calendarDate}T12:00:00`); renderMonthCalendar(); });
-  $('#calendar-day-list').addEventListener('click', (event) => { const eventButton = event.target.closest('[data-calendar-id]'); const taskButton = event.target.closest('[data-task-id]'); if (eventButton) editCalendar(eventButton.dataset.calendarId); if (taskButton) openTaskInCalendar(taskButton.dataset.taskId); });
+  $('#calendar-day-list').addEventListener('click', (event) => { const eventButton = event.target.closest('[data-calendar-id]'); const taskButton = event.target.closest('[data-task-id]'); if (eventButton) editCalendar(eventButton.dataset.calendarId); if (taskButton) openEdit(taskButton.dataset.taskId); });
   $('#btn-save-calendar').addEventListener('click', saveCalendar);
   $('#btn-cancel-calendar-edit').addEventListener('click', closeCalendarEdit);
   $('#calendar-search').addEventListener('input', renderCalendarList);
   $('#calendar-list').addEventListener('click', (event) => {
+    const taskControl = event.target.closest('[data-calendar-task-act]');
+    if (taskControl) {
+      const taskItem = taskControl.closest('[data-task-id]');
+      if (taskControl.dataset.calendarTaskAct === 'edit' && taskItem) openEdit(taskItem.dataset.taskId);
+      return;
+    }
     const control = event.target.closest('[data-calendar-act]'); if (!control) return;
     const id = control.closest('.calendar-item').dataset.id;
     if (control.dataset.calendarAct === 'edit') editCalendar(id);
@@ -1743,7 +1796,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.7.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.7.2').catch(() => {});
   }
 
   resetCalendarForm();

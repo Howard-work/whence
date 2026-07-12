@@ -1,5 +1,11 @@
 # Whence Changelog
 
+## v0.7.2 — 2026-07-12
+
+- Tapping a due task in the calendar month view now opens the full task editor directly.
+- Calendar list view now includes unlinked due tasks alongside calendar events, while linked task-event pairs appear only once.
+- Improved iPhone keyboard handling by following the visual viewport, keeping focused controls visible, and temporarily hiding the bottom navigation while typing.
+
 ## v0.7.1 — 2026-07-12
 
 - Added a direct 「開啟待辦編輯」 action inside a linked Whence calendar event.
