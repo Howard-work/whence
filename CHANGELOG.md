@@ -1,5 +1,11 @@
 # Whence Changelog
 
+## v0.8.1 — 2026-07-12
+
+- Preserved the iPhone top safe area while the software keyboard is open so modal titles and close controls no longer sit beneath the status bar or Dynamic Island.
+- Kept edit-modal headings visible and tappable while long forms scroll.
+- Changed focused-field scrolling from forced centering to nearest-edge movement to avoid unnecessary form jumps.
+
 ## v0.8.0 — 2026-07-12
 
 - Added a dedicated Notebook screen backed by the existing `idea` records, with full-text search, four Space filters, and up to eight frequent tags.

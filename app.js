@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.8.1';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1703,7 +1703,7 @@ function syncVisualViewport() {
 function keepFocusedControlVisible() {
   const active = document.activeElement;
   if (!document.body.classList.contains?.('keyboard-open') || !active?.matches?.('input, textarea, select')) return;
-  setTimeout(() => active.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 120);
+  setTimeout(() => active.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }), 120);
 }
 
 function switchScreen(screen, updateHash = true) {
@@ -1923,7 +1923,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.8.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.8.1').catch(() => {});
   }
 
   resetCalendarForm();
