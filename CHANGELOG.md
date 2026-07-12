@@ -1,5 +1,11 @@
 # Whence Changelog
 
+## v0.6.5 — 2026-07-12
+
+- Refined empty states so functional headings and counts are not repeated inside their message cards.
+- Rewrote the initial 山房按語 collection with quieter, more literary original lines.
+- Gave quiet text a restrained serif treatment and a warmer page-margin accent without adding interaction or animation.
+
 ## v0.6.4 — 2026-07-12
 
 - Added the quiet "山房按語" writing system with one stable daily line at the bottom of Records.

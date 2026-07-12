@@ -1,32 +1,32 @@
 'use strict';
-const APP_VERSION = '0.6.4';
+const APP_VERSION = '0.6.5';
 
 const SHANFANG_COPY = {
   daily: [
-    { id: 'd01', text: '今日所記，明日所憑。', source: 'Whence 原創' },
-    { id: 'd02', text: '一切皆有來處。', source: 'Whence 原創' },
-    { id: 'd03', text: '留下一筆，便留住一段時光。', source: 'Whence 原創' },
-    { id: 'd04', text: '事情經過之處，文字可以作證。', source: 'Whence 原創' },
-    { id: 'd05', text: '先記下，答案可以晚些再來。', source: 'Whence 原創' },
-    { id: 'd06', text: '有些細節，只在當下清楚。', source: 'Whence 原創' },
-    { id: 'd07', text: '今日留下的，會替未來省下一次追問。', source: 'Whence 原創' },
-    { id: 'd08', text: '不必整理一切，只需留下值得留下的。', source: 'Whence 原創' },
-    { id: 'd09', text: '記錄使來時的路仍可辨認。', source: 'Whence 原創' },
-    { id: 'd10', text: '一頁未必完整，卻足以喚回當時。', source: 'Whence 原創' },
-    { id: 'd11', text: '凡有痕跡，便有回望的可能。', source: 'Whence 原創' },
-    { id: 'd12', text: '今日能寫下的，不必交給遺忘。', source: 'Whence 原創' },
+    { id: 'd01', text: '事過留痕，歲月可尋。', source: 'Whence 原創' },
+    { id: 'd02', text: '片語既存，來處可知。', source: 'Whence 原創' },
+    { id: 'd03', text: '凡所經歷，皆可留一頁。', source: 'Whence 原創' },
+    { id: 'd04', text: '今朝所記，他日自明。', source: 'Whence 原創' },
+    { id: 'd05', text: '世事紛至，且記一筆。', source: 'Whence 原創' },
+    { id: 'd06', text: '留白亦是今日之事。', source: 'Whence 原創' },
+    { id: 'd07', text: '字落於此，時光有憑。', source: 'Whence 原創' },
+    { id: 'd08', text: '此刻不言盡，亦可記其梗概。', source: 'Whence 原創' },
+    { id: 'd09', text: '小事入冊，歲月不散。', source: 'Whence 原創' },
+    { id: 'd10', text: '留存不是挽留，只為回望。', source: 'Whence 原創' },
+    { id: 'd11', text: '一事既記，便有可尋之處。', source: 'Whence 原創' },
+    { id: 'd12', text: '收此一事，待來日重讀。', source: 'Whence 原創' },
   ],
   empty: {
-    task: ['今日諸事已畢。', '今日可留白。'],
-    record: ['此處尚無筆墨。', '尚未留下相關記錄。'],
-    equipment: ['今日諸機安然。', '尚無設備事件。'],
-    search: ['此處尚無足跡。', '或許，它還未被記下。'],
-    calendar: ['今日尚無行程。', '此日仍有餘白。'],
+    task: ['今日諸事，暫可留白。', '案上暫無待辦。'],
+    record: ['此頁尚待筆墨。', '今日還未落下一筆。'],
+    equipment: ['諸機安然，暫無所記。', '此處暫無機杼之憂。'],
+    search: ['遍尋未見其跡。', '此處尚無足跡。'],
+    calendar: ['此日仍有餘白。', '行程未至，時光尚寬。'],
   },
   toast: {
-    save: ['已留下一筆。', '此事可追。'],
-    update: ['已補其闕。', '已重新落筆。'],
-    delete: ['已移入舊卷。'],
+    save: ['已收此頁。', '已藏入卷中。'],
+    update: ['已續其後。', '已補入舊卷。'],
+    delete: ['此頁暫歸舊卷。'],
   },
 };
 
@@ -323,9 +323,12 @@ function sameLocalDay(value, reference = new Date()) {
     && date.getMonth() === reference.getMonth() && date.getDate() === reference.getDate();
 }
 
-function renderTodaySection(title, rows, emptyText) {
-  const category = title.includes('到期') ? 'task' : 'record';
-  return `<section class="today-section"><div class="today-section-heading"><h3>${title}</h3><span>${rows.length}</span></div>${rows.length ? renderRecordCards(rows) : `<p class="today-empty">${emptyText}<small>${emptyNote(category)}</small></p>`}</section>`;
+function renderEmptyToday(category) {
+  return `<p class="today-empty">${emptyNote(category)}</p>`;
+}
+
+function renderTodaySection(title, rows, category) {
+  return `<section class="today-section"><div class="today-section-heading"><h3>${title}</h3><span>${rows.length}</span></div>${rows.length ? renderRecordCards(rows) : renderEmptyToday(category)}</section>`;
 }
 
 function renderTodayCalendarSection() {
@@ -335,7 +338,7 @@ function renderTodayCalendarSection() {
     const time = record.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     return `<button type="button" class="today-calendar-item" data-today-calendar-id="${escapeHtml(record.id)}"><span>${escapeHtml(time)}</span><strong>${escapeHtml(record.title)}</strong>${record.location ? `<small>${escapeHtml(record.location)}</small>` : ''}</button>`;
   }).join('');
-  return `<section class="today-section"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || `<p class="today-empty">今天沒有行程<small>${emptyNote('calendar')}</small></p>`}</section>`;
+  return `<section class="today-section"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || renderEmptyToday('calendar')}</section>`;
 }
 
 function renderList() {
@@ -351,15 +354,15 @@ function renderList() {
     const dueIds = new Set(due.map((record) => record.id));
     const created = rows.filter((record) => sameLocalDay(record.created_at) && !dueIds.has(record.id));
     $('#list').innerHTML = renderTodayCalendarSection()
-      + renderTodaySection('今日到期', due, '今天沒有到期待辦')
-      + renderTodaySection('今日新增', created, '今天還沒有新增記錄');
+      + renderTodaySection('今日到期', due, 'task')
+      + renderTodaySection('今日新增', created, 'record');
     return;
   }
   $('#list').innerHTML = rows.length ? renderRecordCards(rows) : `<div class="empty"><strong>目前沒有符合的記錄</strong><span>${emptyNote('record')}</span></div>`;
 }
 
 function searchSection(title, html, count) {
-  return `<section class="today-section search-section"><div class="today-section-heading"><h3>${title}</h3><span>${count}</span></div>${html || `<p class="today-empty">沒有符合結果<small>${emptyNote('search')}</small></p>`}</section>`;
+  return `<section class="today-section search-section"><div class="today-section-heading"><h3>${title}</h3><span>${count}</span></div>${html || renderEmptyToday('search')}</section>`;
 }
 
 function renderGlobalSearch(keyword, filterTag = '') {
@@ -1541,7 +1544,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.6.4').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.6.5').catch(() => {});
   }
 
   resetCalendarForm();
