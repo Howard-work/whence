@@ -1,5 +1,12 @@
 # Whence Changelog
 
+## v0.9.1 — 2026-07-12（穩定化）
+
+- 完成或取消已連結行程的待辦時，移除該 Google 行程的提醒（行程保留作紀錄）；重新開啟待辦會依原設定還原提醒。
+- 行程畫面的 Google 日曆對帳改為同月份視窗 10 分鐘內只執行一次，右上「重新整理」可強制立即對帳；切換分頁明顯變快。
+- 設備表單「發生時間」被清空時，儲存會明確提示「請填寫發生時間」，不再無聲失敗。
+- 後端同步上線：每日 03:00 自動備份試算表（保留最近 7 份日備份＋每月 1 份月備份，超出移至 Drive 垃圾桶）；gas/ 納入 git 版本控制。
+
 ## v0.9.0 — 2026-07-12
 
 - Made an undated task a Records-only item; Calendar now contains real Whence and Google events only.

@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.9.1';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1228,13 +1228,15 @@ async function saveEquipment() {
   const description = $('#equipment-description').value.trim();
   if (!machine || !description) { toast('請填寫設備名稱與發生什麼'); return; }
   if (state.equipmentPhotoBusy) { toast('照片仍在處理中'); return; }
+  const occurredValue = $('#equipment-occurred').value;
+  if (!occurredValue || isNaN(new Date(occurredValue))) { toast('請填寫發生時間'); return; }
   const data = {
     customer: $('#equipment-customer').value,
     machine, description,
     action_taken: $('#equipment-action').value,
     status: $('#equipment-status').value,
     tags: $('#equipment-tags').value,
-    occurred_at: new Date($('#equipment-occurred').value).toISOString(),
+    occurred_at: new Date(occurredValue).toISOString(),
   };
   const linkedKind = $('#equipment-linked-kind').value;
   if (linkedKind) {
@@ -1305,7 +1307,9 @@ async function handleEquipmentEditPhoto(event) {
 }
 
 async function saveEquipmentEdit() {
-  const data = { id: state.equipmentEditingId, customer: $('#equipment-edit-customer').value, machine: $('#equipment-edit-machine').value, description: $('#equipment-edit-description').value, action_taken: $('#equipment-edit-action').value, status: $('#equipment-edit-status').value, tags: $('#equipment-edit-tags').value, occurred_at: new Date($('#equipment-edit-occurred').value).toISOString() };
+  const occurredValue = $('#equipment-edit-occurred').value;
+  if (!occurredValue || isNaN(new Date(occurredValue))) { toast('請填寫發生時間'); return; }
+  const data = { id: state.equipmentEditingId, customer: $('#equipment-edit-customer').value, machine: $('#equipment-edit-machine').value, description: $('#equipment-edit-description').value, action_taken: $('#equipment-edit-action').value, status: $('#equipment-edit-status').value, tags: $('#equipment-edit-tags').value, occurred_at: new Date(occurredValue).toISOString() };
   if (state.equipmentEditAttachment) data.attachment = { data: state.equipmentEditAttachment.data, mime_type: state.equipmentEditAttachment.mime_type };
   if (state.equipmentEditRemoveAttachment) data.remove_attachment = true;
   try { await apiPost('equipment_update', data); closeEquipmentEdit(); toast('設備紀錄已更新'); await loadEquipment(); }
@@ -1337,13 +1341,21 @@ async function openTaskInCalendar(id) {
   else toast('找不到已連結行程，請重新整理後再試');
 }
 
-async function loadCalendar() {
+/** 對帳節流（v0.9.1）：同一個月份視窗 10 分鐘內只對 Google 日曆對帳一次；手動重新整理可強制 */
+const reconcileDoneAt = new Map();
+const RECONCILE_TTL = 10 * 60 * 1000;
+
+async function loadCalendar(forceReconcile = false) {
   $('#calendar-list').setAttribute('aria-busy', 'true');
   try {
     if (!state.records.length) state.records = await fetchAllRecords();
     const start = new Date(state.calendarCursor); start.setDate(start.getDate() - 7);
     const end = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 2, 8);
-    await apiPost('calendar_reconcile', { start: start.toISOString(), end: end.toISOString() });
+    const reconcileKey = `${state.calendarCursor.getFullYear()}-${state.calendarCursor.getMonth()}`;
+    if (forceReconcile || Date.now() - (reconcileDoneAt.get(reconcileKey) || 0) > RECONCILE_TTL) {
+      await apiPost('calendar_reconcile', { start: start.toISOString(), end: end.toISOString() });
+      reconcileDoneAt.set(reconcileKey, Date.now());
+    }
     if (!state.calendarRepairDone) {
       await apiPost('task_calendar_repair');
       state.calendarRepairDone = true;
@@ -1587,7 +1599,7 @@ function init() {
   $('#btn-save').addEventListener('click', save);
   $('#photo-input').addEventListener('change', handlePhotoSelection);
   $('#btn-remove-photo').addEventListener('click', clearSelectedPhoto);
-  $('#btn-refresh').addEventListener('click', () => state.activeScreen === 'equipment' ? loadEquipment() : state.activeScreen === 'calendar' ? loadCalendar() : loadList());
+  $('#btn-refresh').addEventListener('click', () => state.activeScreen === 'equipment' ? loadEquipment() : state.activeScreen === 'calendar' ? loadCalendar(true) : loadList());
   $('#btn-settings').addEventListener('click', () => openSettings());
   $('#btn-close-settings').addEventListener('click', closeSettings);
   $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
@@ -1736,7 +1748,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.9.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.9.1').catch(() => {});
   }
 
   resetCalendarForm();
