@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.7.1';
 
 const SHANFANG_COPY = {
   daily: [
@@ -819,6 +819,7 @@ async function saveEdit() {
     closeEdit(true);
     toast(syncError ? `待辦已儲存；行程未同步：${syncError}` : (syncCalendar ? '待辦與行程已更新' : '修改已儲存'));
     await loadList();
+    if (state.activeScreen === 'calendar') await loadCalendar();
   } catch (err) {
     toast(`儲存失敗：${err.message}`);
   } finally {
@@ -1323,11 +1324,13 @@ async function openTaskInCalendar(id) {
   toast('已帶入待辦，確認後儲存到行程');
 }
 
-function renderCalendarTaskOptions() {
-  const current = $('#calendar-linked-task').value;
-  const tasks = state.records.filter((r) => (r.kind || (r.type === 'todo' ? 'task' : 'note')) === 'task' && !['done', 'cancelled'].includes(r.status));
+function renderCalendarTaskOptions(preferredId = $('#calendar-linked-task').value) {
+  const tasks = state.records.filter((r) => {
+    const isTask = (r.kind || (r.type === 'todo' ? 'task' : 'note')) === 'task';
+    return isTask && (!['done', 'cancelled'].includes(r.status) || r.id === preferredId);
+  });
   $('#calendar-linked-task').innerHTML = '<option value="">不關聯</option>' + tasks.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.content)}</option>`).join('');
-  if (tasks.some((r) => r.id === current)) $('#calendar-linked-task').value = current;
+  if (tasks.some((r) => r.id === preferredId)) $('#calendar-linked-task').value = preferredId;
   renderCalendarTaskSync();
 }
 
@@ -1404,16 +1407,19 @@ function renderCalendarTaskSync() {
   const card = $('#calendar-task-sync');
   const checkbox = $('#calendar-sync-task');
   const preview = $('#calendar-sync-task-preview');
+  const openTaskButton = $('#calendar-open-linked-task');
   const taskId = $('#calendar-linked-task').value;
   const task = state.records.find((item) => item.id === taskId);
   card.hidden = !taskId;
   if (!taskId) {
     checkbox.checked = false;
     checkbox.disabled = false;
+    openTaskButton.hidden = true;
     $('#btn-save-calendar').textContent = calendarFormSaveLabel();
     return;
   }
   checkbox.disabled = !task;
+  openTaskButton.hidden = !task;
   if (!task) {
     checkbox.checked = false;
     preview.textContent = '找不到已關聯待辦，無法安全同步。';
@@ -1435,6 +1441,14 @@ function renderCalendarTaskSync() {
   const sameTime = task.due_date && new Date(task.due_date).getTime() === new Date(nextDue).getTime() && (task.all_day === 'Y') === allDay;
   if (!sameTime) changes.push(`到期：${syncTimeLabel(task.due_date, task.all_day === 'Y')} → ${syncTimeLabel(nextDue, allDay)}`);
   preview.textContent = changes.length ? `儲存後將更新待辦\n${changes.join('\n')}` : '名稱與時間已一致；儲存行程後不需要變更待辦。';
+}
+
+function openLinkedTaskFromCalendar() {
+  const taskId = $('#calendar-linked-task').value;
+  const task = state.records.find((item) => item.id === taskId);
+  if (!task) { toast('找不到已關聯待辦，請重新開啟行程後再試。'); return; }
+  closeCalendarEdit();
+  openEdit(task.id);
 }
 
 function calendarPayload() {
@@ -1489,6 +1503,7 @@ function editCalendar(id) {
     closeCalendarEdit();
     return;
   }
+  renderCalendarTaskOptions(r.linked_event_id || '');
   $('#calendar-form').hidden = false;
   $('#calendar-editing-id').value = r.id; $('#calendar-title-input').value = r.title || ''; $('#calendar-location').value = r.location || ''; $('#calendar-notes').value = r.notes || '';
   $('#calendar-all-day').checked = r.all_day === 'Y'; $('#calendar-end-wrap').hidden = r.all_day === 'Y'; $('#calendar-start').value = localDateTimeValue(r.start_time); $('#calendar-end').value = localDateTimeValue(r.end_time); $('#calendar-reminder').value = String(r.reminder_minutes || '0'); $('#calendar-linked-task').value = r.linked_event_id || '';
@@ -1689,6 +1704,7 @@ function init() {
   $('#calendar-all-day').addEventListener('change', () => { $('#calendar-end-wrap').hidden = $('#calendar-all-day').checked; renderCalendarTaskSync(); });
   $('#calendar-linked-task').addEventListener('change', () => { $('#calendar-sync-task').checked = false; renderCalendarTaskSync(); });
   $('#calendar-sync-task').addEventListener('change', renderCalendarTaskSync);
+  $('#calendar-open-linked-task').addEventListener('click', openLinkedTaskFromCalendar);
   ['#calendar-title-input', '#calendar-start', '#calendar-end'].forEach((selector) => $(selector).addEventListener('input', renderCalendarTaskSync));
   $('#calendar-add').addEventListener('click', () => { resetCalendarForm(); $('#calendar-form').hidden = false; $('#calendar-title-input').focus(); });
   $('#calendar-prev').addEventListener('click', () => moveCalendarMonth(-1));
@@ -1727,7 +1743,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.7.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.7.1').catch(() => {});
   }
 
   resetCalendarForm();

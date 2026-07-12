@@ -1,5 +1,11 @@
 # Whence Changelog
 
+## v0.7.1 — 2026-07-12
+
+- Added a direct 「開啟待辦編輯」 action inside a linked Whence calendar event.
+- Calendar editing now preserves access to its linked task even when that task is completed or cancelled.
+- Saving a task while the Calendar screen remains open refreshes the underlying calendar view.
+
 ## v0.7.0 — 2026-07-12
 
 - Added explicit, previewed task ↔ Whence calendar synchronization for already-linked items.
