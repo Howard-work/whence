@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.9.1';
+const APP_VERSION = '0.9.2';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1562,7 +1562,12 @@ function switchScreen(screen, updateHash = true) {
     if (state.records.length) renderNotebook();
   }
   if (state.activeScreen === 'equipment' && getSecret()) loadEquipment();
-  if (state.activeScreen === 'calendar' && getSecret()) loadCalendar();
+  if (state.activeScreen === 'calendar') {
+    // 先同步目前的檢視狀態並立即畫出月曆，避免等待遠端對帳時整頁空白。
+    setCalendarView(state.calendarView);
+    renderMonthCalendar();
+    if (getSecret()) loadCalendar();
+  }
   const restoreScroll = () => window.scrollTo({ top: state.screenScroll[state.activeScreen] || 0, behavior: 'instant' });
   if (window.requestAnimationFrame) window.requestAnimationFrame(restoreScroll); else restoreScroll();
 }
@@ -1748,7 +1753,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.9.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.9.2').catch(() => {});
   }
 
   resetCalendarForm();
