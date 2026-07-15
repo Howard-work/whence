@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=1.1.0-r3">
+  <link rel="stylesheet" href="./style.css?v=1.1.0-r4">
 </head>
 <body data-screen="records">
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -184,7 +184,32 @@
     <section id="equipment-screen" class="app-screen" aria-labelledby="equipment-title" hidden>
       <section class="screen-intro screen-intro-equipment">
         <div><p class="eyebrow">EQUIPMENT</p><h2 id="equipment-title">設備</h2><p class="screen-intro-copy">故障、處置與等待中的事，都沿著同一條時間線留下來。</p></div>
+        <button type="button" id="btn-jump-equipment-capture" class="intro-action" aria-label="前往新增設備紀錄">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <span>新增紀錄</span>
+        </button>
       </section>
+      <details id="equipment-history-panel" class="collapsible-section" open>
+        <summary><span><small>HISTORY</small><strong id="equipment-history-title">設備歷史</strong></span></summary>
+        <div class="collapsible-body">
+      <details id="equipment-search-panel" class="equipment-search-panel">
+        <summary><span>搜尋與篩選</span><small id="equipment-filter-state">需要時再展開</small></summary>
+      <section class="filter-bar" aria-label="搜尋與篩選設備歷史">
+        <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
+        <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、狀態、內容或標籤…">
+        <label class="field-label" for="equipment-customer-filter">客戶時間軸</label>
+        <select id="equipment-customer-filter"><option value="">全部客戶</option></select>
+        <button type="button" id="btn-customer-alias" class="secondary-btn" hidden>合併客戶名稱</button>
+        <label class="field-label" for="equipment-machine-filter">設備篩選</label>
+        <select id="equipment-machine-filter"><option value="">全部設備</option></select>
+        <details class="equipment-filter-details"><summary>進階篩選 <span>狀態／日期</span></summary><p class="filter-help">日期可留空；填寫後只顯示該期間內的歷史紀錄。</p><div class="equipment-timeline-filters"><div><label class="field-label" for="equipment-status-filter">設備狀態</label><select id="equipment-status-filter"><option value="">全部狀態</option><option value="resolved">已解決</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="recurring">持續發生</option><option value="paused">暫停處理</option></select></div><div><label class="field-label" for="equipment-date-from">開始日期</label><input id="equipment-date-from" type="date"></div><div><label class="field-label" for="equipment-date-to">結束日期</label><input id="equipment-date-to" type="date"></div></div></details>
+      </section>
+      </details>
+      <p id="equipment-timeline-context" class="timeline-context"></p>
+      <section id="equipment-current-summary" class="equipment-current-summary" hidden></section>
+      <section id="equipment-list" aria-busy="false"></section>
+        </div>
+      </details>
       <section class="card equipment-capture" aria-labelledby="equipment-capture-title">
         <div class="section-heading">
           <div><p class="eyebrow">NEW ENTRY</p><h2 id="equipment-capture-title">新增設備紀錄</h2></div>
@@ -225,24 +250,6 @@
         </div>
         <button type="button" id="btn-save-equipment" class="save-btn">儲存設備紀錄</button>
       </section>
-      <details id="equipment-history-panel" class="collapsible-section" open>
-        <summary><span><small>HISTORY</small><strong id="equipment-history-title">設備歷史</strong></span></summary>
-        <div class="collapsible-body">
-      <section class="filter-bar" aria-labelledby="equipment-history-title">
-        <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
-        <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、狀態、內容或標籤…">
-        <label class="field-label" for="equipment-customer-filter">客戶時間軸</label>
-        <select id="equipment-customer-filter"><option value="">全部客戶</option></select>
-        <button type="button" id="btn-customer-alias" class="secondary-btn" hidden>合併客戶名稱</button>
-        <label class="field-label" for="equipment-machine-filter">設備篩選</label>
-        <select id="equipment-machine-filter"><option value="">全部設備</option></select>
-        <details class="equipment-filter-details"><summary>進階篩選 <span>狀態／日期</span></summary><p class="filter-help">日期可留空；填寫後只顯示該期間內的歷史紀錄。</p><div class="equipment-timeline-filters"><div><label class="field-label" for="equipment-status-filter">設備狀態</label><select id="equipment-status-filter"><option value="">全部狀態</option><option value="resolved">已解決</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="recurring">持續發生</option><option value="paused">暫停處理</option></select></div><div><label class="field-label" for="equipment-date-from">開始日期</label><input id="equipment-date-from" type="date"></div><div><label class="field-label" for="equipment-date-to">結束日期</label><input id="equipment-date-to" type="date"></div></div></details>
-        <p id="equipment-timeline-context" class="timeline-context"></p>
-        <section id="equipment-current-summary" class="equipment-current-summary" hidden></section>
-      </section>
-      <section id="equipment-list" aria-busy="false"></section>
-        </div>
-      </details>
     </section>
     <section id="calendar-screen" class="app-screen" aria-labelledby="calendar-screen-title" hidden>
       <section class="screen-intro screen-intro-calendar">
@@ -436,6 +443,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=1.1.0-r3"></script>
+  <script src="./app.js?v=1.1.0-r4"></script>
 </body>
 </html>

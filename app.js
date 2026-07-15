@@ -1472,6 +1472,16 @@ function renderCustomerTimeline(customer) {
 }
 
 function renderEquipmentList() {
+  const activeFilterCount = [
+    $('#equipment-search').value.trim(),
+    $('#equipment-customer-filter').value,
+    $('#equipment-machine-filter').value,
+    $('#equipment-status-filter').value,
+    $('#equipment-date-from').value,
+    $('#equipment-date-to').value,
+  ].filter(Boolean).length;
+  $('#equipment-search-panel').dataset.active = String(activeFilterCount > 0);
+  $('#equipment-filter-state').textContent = activeFilterCount ? `已套用 ${activeFilterCount} 項` : '需要時再展開';
   const customer = $('#equipment-customer-filter').value;
   $('#btn-customer-alias').hidden = !customer;
   if (customer) { renderCustomerTimeline(customer); return; }
@@ -2047,14 +2057,16 @@ function init() {
     b.addEventListener('click', () => setActiveKind(b.dataset.kind)));
   document.querySelectorAll('.view-btn').forEach((button) =>
     button.addEventListener('click', () => setActiveView(button.dataset.view)));
-  $('#btn-jump-capture').addEventListener('click', () => {
-    const capture = $('#input-card');
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const jumpToCapture = (selector) => {
+    const capture = $(selector);
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
     capture.classList.remove('capture-attention');
     capture.classList.add('capture-attention');
     capture.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
     setTimeout(() => capture.classList.remove('capture-attention'), reducedMotion ? 0 : 900);
-  });
+  };
+  $('#btn-jump-capture').addEventListener('click', () => jumpToCapture('#input-card'));
+  $('#btn-jump-equipment-capture').addEventListener('click', () => jumpToCapture('.equipment-capture'));
   document.querySelectorAll('.space-btn').forEach((button) =>
     button.addEventListener('click', () => toggleQuickSpace(button.dataset.space)));
   $('#space').addEventListener('input', syncSpaceButtons);
