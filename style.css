@@ -62,12 +62,11 @@ body[data-screen="calendar"] { --screen-tone: var(--calendar); --screen-wash: rg
 
 body.batch-mode main { padding-bottom: 88px; }
 #records-screen { display: flex; flex-direction: column; }
-#records-screen > .capture-card { order: 1; }
+#records-screen > .screen-intro { order: 1; }
 #records-screen > #records-panel { order: 2; }
-#records-screen > #search-panel { order: 3; }
-#records-screen > #shanfang-note { order: 4; }
-#records-screen.today-mode > #records-panel { order: 1; }
-#records-screen.today-mode > .capture-card { order: 2; }
+#records-screen > .capture-card { order: 3; }
+#records-screen > #search-panel { order: 4; }
+#records-screen > #shanfang-note { order: 5; }
 
 button,
 input,
@@ -196,7 +195,10 @@ header h1 {
 .screen-intro .eyebrow { color: var(--screen-tone); }
 .screen-intro h2 { margin: 3px 0 0; font-family: "Songti TC", "Noto Serif TC", "PMingLiU", serif; font-size: clamp(30px, 8vw, 40px); font-weight: 650; letter-spacing: .05em; line-height: 1.15; }
 .screen-intro-copy { max-width: 34em; margin: 9px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
-.screen-intro-mark { display: grid; place-items: center; width: 52px; height: 52px; flex: 0 0 52px; border: 1px solid var(--screen-tone); border-radius: 50%; background: var(--screen-wash); color: var(--screen-tone); font-family: Georgia, serif; font-size: 20px; }
+.intro-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 132px; min-height: 48px; flex: 0 0 auto; padding: 0 16px; border: 1px solid var(--screen-tone); border-radius: 999px; background: var(--screen-wash); color: var(--screen-tone); font-size: 13px; font-weight: 750; letter-spacing: .04em; cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+.intro-action:hover { background: color-mix(in srgb, var(--screen-wash) 72%, var(--screen-tone)); }
+.intro-action:active { transform: scale(.97); }
+.intro-action svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
 .header-actions {
   display: flex;
@@ -251,9 +253,12 @@ header h1 {
 }
 
 .capture-card {
+  scroll-margin-top: calc(92px + env(safe-area-inset-top));
   border-color: #2b3b59;
   box-shadow: inset 3px 0 0 rgba(224, 185, 104, 0.88), 0 16px 42px rgba(3, 7, 15, 0.2);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
+.capture-card.capture-attention { border-color: rgba(224, 185, 104, .82); box-shadow: inset 3px 0 0 var(--origin), 0 0 0 3px rgba(224, 185, 104, .12), 0 16px 42px rgba(3, 7, 15, .2); }
 
 .section-heading,
 .modal-heading {
@@ -612,6 +617,7 @@ textarea {
 .notebook-detail-body > .save-btn { width: 100%; }
 
 .today-overview { position: relative; margin: 0 0 28px; padding: 22px 20px 20px; overflow: hidden; border: 1px solid #30415f; border-radius: var(--radius-lg); background: linear-gradient(145deg, #17243b, #111a2c 68%); }
+#today-overview-slot .today-overview { margin-bottom: 18px; }
 .today-overview::after { position: absolute; top: -48px; right: -44px; width: 132px; height: 132px; border: 1px solid rgba(224, 185, 104, 0.2); border-radius: 50%; content: ''; }
 .today-date { margin: 0 0 8px; color: var(--origin); font-size: 11px; font-weight: 750; letter-spacing: .12em; }
 .today-overview h2 { margin: 0; font-family: "Songti TC", "Noto Serif TC", "PMingLiU", serif; font-size: clamp(30px, 9vw, 42px); font-weight: 650; letter-spacing: .06em; line-height: 1.15; }
@@ -1338,8 +1344,10 @@ body.keyboard-open .modal-body {
   .card { padding: 16px; }
   .app-screen { padding-top: 18px; }
   .screen-intro { align-items: flex-start; margin-bottom: 18px; }
-  .screen-intro-mark { width: 44px; height: 44px; flex-basis: 44px; font-size: 17px; }
   .screen-intro-copy { font-size: 13px; }
+  .screen-intro-records { align-items: flex-end; }
+  .intro-action { min-width: 48px; width: 48px; padding: 0; }
+  .intro-action span { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .today-overview { padding: 20px 16px 16px; }
   .type-row { gap: 6px; }
   .filter-row { grid-template-columns: 1fr 1fr; }

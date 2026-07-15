@@ -547,6 +547,18 @@ function renderTodayOverview(calendarCount, taskCount, recordCount) {
   </section>`;
 }
 
+function todayOverviewData() {
+  const todayCalendar = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time));
+  const linkedTodayTaskIds = new Set(todayCalendar.map((record) => record.linked_event_id).filter(Boolean));
+  const due = state.records.filter((record) => {
+    const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
+    return kind === 'task' && !linkedTodayTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
+  });
+  const dueIds = new Set(due.map((record) => record.id));
+  const created = state.records.filter((record) => sameLocalDay(record.created_at) && !dueIds.has(record.id));
+  return { todayCalendar, due, created };
+}
+
 function renderTodayCalendarSection(rows = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time))) {
   const cards = rows.map((record) => {
     const start = new Date(record.start_time);
@@ -559,21 +571,14 @@ function renderTodayCalendarSection(rows = visibleCalendarRecords().filter((reco
 function renderList() {
   const keyword = $('#search').value.trim().toLowerCase();
   $('#records-screen').classList.toggle('searching', !!keyword || !!state.filterTag);
+  const today = todayOverviewData();
+  $('#today-overview-slot').innerHTML = renderTodayOverview(today.todayCalendar.length, today.due.length, today.created.length);
   if (keyword || state.filterTag) { renderGlobalSearch(keyword, state.filterTag); return; }
   const rows = visibleRecords();
   if (state.activeView === 'today') {
-    const todayCalendar = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time));
-    const linkedTodayTaskIds = new Set(todayCalendar.map((record) => record.linked_event_id).filter(Boolean));
-    const due = rows.filter((record) => {
-      const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
-      return kind === 'task' && !linkedTodayTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
-    });
-    const dueIds = new Set(due.map((record) => record.id));
-    const created = rows.filter((record) => sameLocalDay(record.created_at) && !dueIds.has(record.id));
-    $('#list').innerHTML = renderTodayOverview(todayCalendar.length, due.length, created.length)
-      + renderTodayCalendarSection(todayCalendar)
-      + renderTodaySection('今日到期', due, 'task')
-      + renderTodaySection('今日新增', created, 'record');
+    $('#list').innerHTML = renderTodayCalendarSection(today.todayCalendar)
+      + renderTodaySection('今日到期', today.due, 'task')
+      + renderTodaySection('今日新增', today.created, 'record');
     return;
   }
   $('#list').innerHTML = rows.length ? renderRecordCards(rows) : `<div class="empty"><strong>目前沒有符合的記錄</strong><span>${emptyNote('record')}</span></div>`;
@@ -2042,6 +2047,14 @@ function init() {
     b.addEventListener('click', () => setActiveKind(b.dataset.kind)));
   document.querySelectorAll('.view-btn').forEach((button) =>
     button.addEventListener('click', () => setActiveView(button.dataset.view)));
+  $('#btn-jump-capture').addEventListener('click', () => {
+    const capture = $('#input-card');
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    capture.classList.remove('capture-attention');
+    capture.classList.add('capture-attention');
+    capture.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    setTimeout(() => capture.classList.remove('capture-attention'), reducedMotion ? 0 : 900);
+  });
   document.querySelectorAll('.space-btn').forEach((button) =>
     button.addEventListener('click', () => toggleQuickSpace(button.dataset.space)));
   $('#space').addEventListener('input', syncSpaceButtons);
