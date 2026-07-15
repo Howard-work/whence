@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.11.0';
+const APP_VERSION = '1.0.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -461,6 +461,14 @@ function sameLocalDay(value, reference = new Date()) {
     && date.getMonth() === reference.getMonth() && date.getDate() === reference.getDate();
 }
 
+function isDailyDigestRecord(record) {
+  return String(record?.notes || record?.description || '').includes('[whence-digest]');
+}
+
+function visibleCalendarRecords() {
+  return state.calendarRecords.filter((record) => !isDailyDigestRecord(record));
+}
+
 function renderEmptyToday(category) {
   return `<p class="today-empty">${emptyNote(category)}</p>`;
 }
@@ -470,7 +478,7 @@ function renderTodaySection(title, rows, category) {
 }
 
 function renderTodayCalendarSection() {
-  const rows = state.calendarRecords.filter((record) => sameLocalDay(record.start_time));
+  const rows = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time));
   const cards = rows.map((record) => {
     const start = new Date(record.start_time);
     const time = record.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -485,7 +493,7 @@ function renderList() {
   if (keyword || state.filterTag) { renderGlobalSearch(keyword, state.filterTag); return; }
   const rows = visibleRecords();
   if (state.activeView === 'today') {
-    const linkedTodayTaskIds = new Set(state.calendarRecords.filter((record) => sameLocalDay(record.start_time)).map((record) => record.linked_event_id).filter(Boolean));
+    const linkedTodayTaskIds = new Set(visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time)).map((record) => record.linked_event_id).filter(Boolean));
     const due = rows.filter((record) => {
       const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
       return kind === 'task' && !linkedTodayTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
@@ -1675,7 +1683,7 @@ function dayKey(value) {
 
 function calendarItemsForDay(date) {
   const key = dayKey(date);
-  return state.calendarRecords.filter((r) => dayKey(r.start_time) === key).sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  return visibleCalendarRecords().filter((r) => dayKey(r.start_time) === key).sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 }
 
 function renderMonthCalendar() {
@@ -1696,7 +1704,7 @@ function renderMonthCalendar() {
 }
 
 function calendarListItems() {
-  return state.calendarRecords.slice().sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+  return visibleCalendarRecords().slice().sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 }
 
 function renderCalendarList() {
@@ -1764,7 +1772,7 @@ function updateAppBadge() {
   if (!navigator.setAppBadge) return;
   const now = new Date();
   const today = now.toDateString();
-  const scheduleRows = state.calendarRecords.filter((r) => new Date(r.start_time).toDateString() === today);
+  const scheduleRows = visibleCalendarRecords().filter((r) => new Date(r.start_time).toDateString() === today);
   const linkedTaskIds = new Set(scheduleRows.map((r) => r.linked_event_id).filter(Boolean));
   const due = state.records.filter((r) => (r.kind || '') === 'task' && !linkedTaskIds.has(r.id) && !['done', 'cancelled'].includes(r.status) && r.due_date && new Date(r.due_date).toDateString() === today).length;
   const schedule = scheduleRows.length;
@@ -2052,7 +2060,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.11.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.0.0').catch(() => {});
   }
 
   resetCalendarForm();
