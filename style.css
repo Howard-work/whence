@@ -16,6 +16,9 @@
   --danger: #ff7b91;
   --warn: #f0c36b;
   --ok: #95d47b;
+  --calendar: #82aaff;
+  --task: #f0c36b;
+  --record: #95d47b;
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -53,6 +56,8 @@ body.batch-mode main { padding-bottom: 88px; }
 #records-screen > #records-panel { order: 2; }
 #records-screen > #search-panel { order: 3; }
 #records-screen > #shanfang-note { order: 4; }
+#records-screen.today-mode > #records-panel { order: 1; }
+#records-screen.today-mode > .capture-card { order: 2; }
 
 button,
 input,
@@ -556,11 +561,27 @@ textarea {
 .notebook-detail-body > .secondary-btn,
 .notebook-detail-body > .save-btn { width: 100%; }
 
-.today-section { margin: 0 0 24px; }
+.today-overview { position: relative; margin: 0 0 28px; padding: 22px 20px 20px; overflow: hidden; border: 1px solid #30415f; border-radius: var(--radius-lg); background: linear-gradient(145deg, #17243b, #111a2c 68%); }
+.today-overview::after { position: absolute; top: -48px; right: -44px; width: 132px; height: 132px; border: 1px solid rgba(224, 185, 104, 0.2); border-radius: 50%; content: ''; }
+.today-date { margin: 0 0 8px; color: var(--origin); font-size: 11px; font-weight: 750; letter-spacing: .12em; }
+.today-overview h2 { margin: 0; font-family: "Songti TC", "Noto Serif TC", "PMingLiU", serif; font-size: clamp(30px, 9vw, 42px); font-weight: 650; letter-spacing: .06em; line-height: 1.15; }
+.today-summary { max-width: 30em; margin: 9px 0 20px; color: var(--muted); font-size: 15px; line-height: 1.65; }
+.today-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.today-stats span { min-width: 0; padding: 10px 8px; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: rgba(11, 16, 32, 0.42); color: var(--muted); font-size: 12px; text-align: center; }
+.today-stats b { margin-right: 3px; color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
+.today-stats .calendar { border-top-color: var(--calendar); }
+.today-stats .task { border-top-color: var(--task); }
+.today-stats .record { border-top-color: var(--record); }
+.today-section { --today-tone: var(--origin); margin: 0 0 28px; }
+.today-section.today-calendar { --today-tone: var(--calendar); }
+.today-section.today-task { --today-tone: var(--task); }
+.today-section.today-record { --today-tone: var(--record); }
 .today-section-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 10px; }
-.today-section-heading h3 { margin: 0; font-size: 17px; }
+.today-section-heading h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 17px; }
+.today-section-heading h3::before { width: 3px; height: 18px; border-radius: 2px; background: var(--today-tone); content: ''; }
 .today-section-heading span { min-width: 28px; padding: 2px 8px; border-radius: 999px; background: var(--surface-strong); color: var(--muted); text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
-.today-empty { display: flex; align-items: center; min-height: 68px; margin: 0; padding: 16px; border: 1px solid var(--border-soft); border-left: 2px solid rgba(224, 185, 104, 0.46); border-radius: var(--radius-md); background: linear-gradient(90deg, rgba(224, 185, 104, 0.055), rgba(19, 26, 42, 0)); color: var(--muted); font-family: "Songti TC", "Noto Serif TC", "PMingLiU", serif; font-size: 15px; line-height: 1.75; letter-spacing: .04em; }
+.today-empty { display: flex; align-items: center; min-height: 68px; margin: 0; padding: 16px; border: 1px solid var(--border-soft); border-left: 2px solid var(--today-tone, rgba(224, 185, 104, 0.46)); border-radius: var(--radius-md); background: linear-gradient(90deg, rgba(224, 185, 104, 0.055), rgba(19, 26, 42, 0)); color: var(--muted); font-family: "Songti TC", "Noto Serif TC", "PMingLiU", serif; font-size: 15px; line-height: 1.75; letter-spacing: .04em; }
+.today-section .item { border-left: 3px solid var(--today-tone); }
 .today-calendar-item { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 3px 12px; width: 100%; min-height: 56px; margin-bottom: 8px; padding: 12px 14px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-md); background: var(--surface); color: var(--text); text-align: left; }
 .today-calendar-item > span { grid-row: 1 / span 2; align-self: center; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
 .today-calendar-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1251,6 +1272,7 @@ body.keyboard-open .modal-body {
   .header-actions { gap: 6px; }
   .icon-btn { width: 44px; height: 44px; }
   .card { padding: 16px; }
+  .today-overview { padding: 20px 16px 16px; }
   .type-row { gap: 6px; }
   .filter-row { grid-template-columns: 1fr 1fr; }
   .edit-grid { grid-template-columns: 1fr; gap: 0; }

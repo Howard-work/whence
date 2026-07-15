@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 const SHANFANG_COPY = {
   daily: [
@@ -516,17 +516,38 @@ function renderEmptyToday(category) {
 }
 
 function renderTodaySection(title, rows, category) {
-  return `<section class="today-section"><div class="today-section-heading"><h3>${title}</h3><span>${rows.length}</span></div>${rows.length ? renderRecordCards(rows) : renderEmptyToday(category)}</section>`;
+  const tone = category === 'task' ? 'task' : 'record';
+  return `<section class="today-section today-${tone}"><div class="today-section-heading"><h3>${title}</h3><span>${rows.length}</span></div>${rows.length ? renderRecordCards(rows) : renderEmptyToday(category)}</section>`;
 }
 
-function renderTodayCalendarSection() {
-  const rows = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time));
+function renderTodayOverview(calendarCount, taskCount, recordCount) {
+  const today = new Date();
+  const date = today.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'long' });
+  const attentionCount = calendarCount + taskCount;
+  const summary = attentionCount
+    ? `有 ${calendarCount} 個行程、${taskCount} 件待辦需要留意。`
+    : recordCount
+      ? `眼前無急事，今日已留下 ${recordCount} 筆記錄。`
+      : '今天沒有急著要處理的事。';
+  return `<section class="today-overview" aria-labelledby="today-overview-title">
+    <p class="today-date">${escapeHtml(date)}</p>
+    <h2 id="today-overview-title">今天</h2>
+    <p class="today-summary">${escapeHtml(summary)}</p>
+    <div class="today-stats" aria-label="今日摘要">
+      <span class="calendar"><b>${calendarCount}</b> 行程</span>
+      <span class="task"><b>${taskCount}</b> 待辦</span>
+      <span class="record"><b>${recordCount}</b> 新記</span>
+    </div>
+  </section>`;
+}
+
+function renderTodayCalendarSection(rows = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time))) {
   const cards = rows.map((record) => {
     const start = new Date(record.start_time);
     const time = record.all_day === 'Y' ? '全天' : start.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
     return `<button type="button" class="today-calendar-item" data-today-calendar-id="${escapeHtml(record.id)}"><span>${escapeHtml(time)}</span><strong>${escapeHtml(record.title)}</strong>${record.location ? `<small>${escapeHtml(record.location)}</small>` : ''}</button>`;
   }).join('');
-  return `<section class="today-section"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || renderEmptyToday('calendar')}</section>`;
+  return `<section class="today-section today-calendar"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || renderEmptyToday('calendar')}</section>`;
 }
 
 function renderList() {
@@ -535,14 +556,16 @@ function renderList() {
   if (keyword || state.filterTag) { renderGlobalSearch(keyword, state.filterTag); return; }
   const rows = visibleRecords();
   if (state.activeView === 'today') {
-    const linkedTodayTaskIds = new Set(visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time)).map((record) => record.linked_event_id).filter(Boolean));
+    const todayCalendar = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time));
+    const linkedTodayTaskIds = new Set(todayCalendar.map((record) => record.linked_event_id).filter(Boolean));
     const due = rows.filter((record) => {
       const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
       return kind === 'task' && !linkedTodayTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
     });
     const dueIds = new Set(due.map((record) => record.id));
     const created = rows.filter((record) => sameLocalDay(record.created_at) && !dueIds.has(record.id));
-    $('#list').innerHTML = renderTodayCalendarSection()
+    $('#list').innerHTML = renderTodayOverview(todayCalendar.length, due.length, created.length)
+      + renderTodayCalendarSection(todayCalendar)
       + renderTodaySection('今日到期', due, 'task')
       + renderTodaySection('今日新增', created, 'record');
     return;
@@ -2182,7 +2205,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.0.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.0.2').catch(() => {});
   }
 
   resetCalendarForm();
