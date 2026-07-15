@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.10.1';
+const APP_VERSION = '0.11.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -56,6 +56,7 @@ const state = {
   filterTag: '',
   batch: false,
   selected: new Set(),
+  pendingRecordIds: new Set(),
   attachment: null,
   attachmentPreviewUrl: '',
   photoBusy: false,
@@ -184,19 +185,22 @@ function clearPerformanceReport() {
 }
 
 // ===== API =====
-async function apiGet(params = {}) {
+async function apiRead(action, data = {}) {
   const startedAt = perfNow();
   let json;
   let ok = false;
-  const q = new URLSearchParams({ secret: getSecret(), ...params });
   try {
-    const res = await fetch(`${API_URL}?${q}`);
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ secret: getSecret(), action, data }),
+    });
     json = await res.json();
     if (!json.ok) throw new Error(json.error || '未知錯誤');
     ok = true;
     return json.data;
   } finally {
-    perfRecord(`API GET ${String(params.action || 'list')}`, startedAt, { ok, serverMs: json?.server_ms });
+    perfRecord(`API READ ${String(action || 'unknown')}`, startedAt, { ok, serverMs: json?.server_ms });
   }
 }
 
@@ -228,7 +232,7 @@ async function fetchAllRecords() {
   let ok = false;
   try {
     for (let offset = 0; ; offset += pageSize) {
-      const page = await apiGet({ action: 'list', limit: pageSize, offset });
+      const page = await apiRead('list', { limit: pageSize, offset });
       let added = 0;
       page.forEach((record) => {
         if (seen.has(record.id)) return;
@@ -326,8 +330,8 @@ async function loadList() {
     const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 8);
     const [records, calendarRecords, equipmentRecords] = await Promise.all([
       fetchAllRecords(),
-      apiGet({ action: 'calendar_live', start: monthStart.toISOString(), end: monthEnd.toISOString() }).catch(() => []),
-      apiGet({ action: 'equipment_list' }).catch(() => []),
+      apiRead('calendar_live', { start: monthStart.toISOString(), end: monthEnd.toISOString() }).catch(() => []),
+      apiRead('equipment_list').catch(() => []),
     ]);
     state.records = records;
     state.calendarRecords = calendarRecords;
@@ -400,6 +404,7 @@ function renderRecordCards(rows) {
   return rows.map((r) => {
     const kind = r.kind || (r.type === 'todo' ? 'task' : 'note');
     const done = r.status === 'done';
+    const pending = state.pendingRecordIds.has(r.id);
     const tags = String(r.tags || '').split(',').filter(Boolean)
       .map((t) => `<span class="item-tag">#${escapeHtml(t)}</span>`).join(' ');
     const statusOptions = Object.entries(STATUS_LABELS)
@@ -408,10 +413,10 @@ function renderRecordCards(rows) {
     const checkbox = state.batch
       ? `<input type="checkbox" aria-label="選取：${escapeHtml(r.content)}" ${state.selected.has(r.id) ? 'checked' : ''} data-act="select">`
       : kind === 'task'
-        ? `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} data-act="toggle">`
+        ? `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} ${pending ? 'disabled' : ''} data-act="toggle">`
         : '<span class="kind-marker" aria-hidden="true"></span>';
     return `
-    <div class="item ${done ? 'done' : ''}" data-id="${r.id}">
+    <div class="item ${done ? 'done' : ''} ${pending ? 'syncing' : ''}" data-id="${r.id}" aria-busy="${pending}">
       ${checkbox}
       <div class="item-main">
         <div class="item-content">${escapeHtml(r.content)}</div>
@@ -442,7 +447,8 @@ function renderRecordCards(rows) {
             <button type="button" class="menu-delete" data-act="delete">刪除</button>
           </div>
         </details>
-        ${kind === 'task' ? `<select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態">${statusOptions}</select>` : ''}
+        ${pending ? '<span class="syncing-label" role="status">同步中…</span>' : ''}
+        ${kind === 'task' ? `<select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態" ${pending ? 'disabled' : ''}>${statusOptions}</select>` : ''}
       </div>`}
     </div>`;
   }).join('');
@@ -517,7 +523,7 @@ function renderGlobalSearch(keyword, filterTag = '') {
 async function ensureCalendarSearchRecords() {
   if (state.calendarSearchLoaded) return;
   try {
-    state.calendarSearchRecords = await apiGet({ action: 'calendar_list' });
+    state.calendarSearchRecords = await apiRead('calendar_list');
     state.calendarSearchLoaded = true;
     if ($('#search').value.trim()) renderList();
   } catch (_) {}
@@ -636,15 +642,125 @@ function renderSpaceOptions() {
 }
 
 // ===== 回寫動作 =====
-async function withBusy(fn, okMsg) {
+function refreshRecordViews() {
+  renderTagChips();
+  renderSpaceOptions();
+  renderList();
+  renderNotebook();
+  updateAppBadge();
+}
+
+function mutationRows(result) {
+  return (Array.isArray(result) ? result : [result]).filter((record) => record && record.id);
+}
+
+function syncLocalCalendarProjection(record) {
+  const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
+  if (kind !== 'task' || !record.calendar_id || !record.due_date) return;
+  const existing = state.calendarRecords.find((item) => item.id === record.calendar_id)
+    || state.calendarSearchRecords.find((item) => item.id === record.calendar_id);
+  const start = new Date(record.due_date);
+  const oldStart = new Date(existing?.start_time || '');
+  const oldEnd = new Date(existing?.end_time || '');
+  const oldDuration = oldEnd.getTime() - oldStart.getTime();
+  const duration = Number.isFinite(oldDuration) && oldDuration > 0 && existing?.all_day !== 'Y' ? oldDuration : 60 * 60 * 1000;
+  const projection = {
+    ...(existing || {}),
+    id: record.calendar_id,
+    title: record.content,
+    location: existing?.location || '',
+    notes: existing?.notes || '',
+    start_time: record.due_date,
+    end_time: record.all_day === 'Y' ? record.due_date : new Date(start.getTime() + duration).toISOString(),
+    all_day: record.all_day || 'N',
+    reminder_minutes: existing?.reminder_minutes || '30',
+    linked_event_id: record.id,
+    read_only: false,
+  };
+  const calendarIndex = state.calendarRecords.findIndex((item) => item.id === projection.id);
+  if (calendarIndex >= 0) state.calendarRecords.splice(calendarIndex, 1, projection);
+  else state.calendarRecords.push(projection);
+  if (state.calendarSearchLoaded) {
+    const searchIndex = state.calendarSearchRecords.findIndex((item) => item.id === projection.id);
+    if (searchIndex >= 0) state.calendarSearchRecords.splice(searchIndex, 1, projection);
+    else state.calendarSearchRecords.push(projection);
+  }
+}
+
+/** 以後端回傳資料更新記憶體，不再為一筆異動重抓全部 Sheets。 */
+function upsertLocalRecords(result, refresh = true) {
+  mutationRows(result).forEach((record) => {
+    const index = state.records.findIndex((item) => item.id === record.id);
+    const previous = index >= 0 ? state.records[index] : null;
+    if (previous?.calendar_id && previous.calendar_id !== record.calendar_id) {
+      state.calendarRecords = state.calendarRecords.filter((item) => item.id !== previous.calendar_id);
+      state.calendarSearchRecords = state.calendarSearchRecords.filter((item) => item.id !== previous.calendar_id);
+      state.calendarSearchLoaded = false;
+    }
+    if (index >= 0) state.records.splice(index, 1, record);
+    else state.records.unshift(record);
+    syncLocalCalendarProjection(record);
+  });
+  if (refresh) refreshRecordViews();
+  return result;
+}
+
+function removeLocalRecords(result, refresh = true) {
+  const rows = mutationRows(result);
+  const ids = new Set(rows.map((record) => record.id));
+  const calendarIds = new Set(rows.map((record) => record.calendar_id).filter(Boolean));
+  state.records = state.records.filter((record) => !ids.has(record.id));
+  ids.forEach((id) => state.selected.delete(id));
+  state.calendarRecords = state.calendarRecords.filter((record) => !calendarIds.has(record.id) && !ids.has(record.linked_event_id));
+  state.calendarSearchRecords = state.calendarSearchRecords.filter((record) => !calendarIds.has(record.id) && !ids.has(record.linked_event_id));
+  if (calendarIds.size) state.calendarSearchLoaded = false;
+  if (refresh) refreshRecordViews();
+  return result;
+}
+
+async function withBusy(fn, okMsg, applyResult = upsertLocalRecords) {
   try {
-    await fn();
+    const result = await fn();
+    applyResult(result);
     if (okMsg) toast(okMsg);
-    await loadList();
     return true;
   } catch (err) {
     toast(`失敗：${err.message}`);
     return false;
+  }
+}
+
+function deleteConfirmationMessage(record) {
+  const kind = record?.kind || (record?.type === 'todo' ? 'task' : 'note');
+  if (kind === 'task' && !['done', 'cancelled'].includes(record?.status)) {
+    const linked = record?.calendar_id ? '已連結的 Whence 行程也會移入最近刪除。' : '';
+    return `這筆待辦如果已做完，建議按「完成」保留紀錄。\n\n仍要刪除嗎？${linked}刪除後仍可從「最近刪除」復原。`;
+  }
+  return record?.calendar_id
+    ? '刪除這筆待辦？已連結的 Whence 行程也會移入最近刪除，之後可復原。'
+    : '刪除這筆？之後仍可從「最近刪除」復原。';
+}
+
+async function updateTaskStatusOptimistically(id, status) {
+  const index = state.records.findIndex((record) => record.id === id);
+  if (index < 0 || state.pendingRecordIds.has(id)) return false;
+  const previous = { ...state.records[index] };
+  state.pendingRecordIds.add(id);
+  state.records.splice(index, 1, { ...previous, status });
+  refreshRecordViews();
+  try {
+    const updated = await apiPost('update', { id, status });
+    upsertLocalRecords(updated, false);
+    toast(status === 'done' ? '已完成 ✓' : status === 'open' ? '重新開啟' : '狀態已更新');
+    return true;
+  } catch (err) {
+    const rollbackIndex = state.records.findIndex((record) => record.id === id);
+    if (rollbackIndex >= 0) state.records.splice(rollbackIndex, 1, previous);
+    toast(`同步失敗，已恢復原狀態：${err.message}`, false);
+    return false;
+  } finally {
+    state.pendingRecordIds.delete(id);
+    refreshRecordViews();
   }
 }
 
@@ -676,17 +792,17 @@ async function onListClick(e) {
   const record = state.records.find((entry) => entry.id === id);
   const control = e.target.closest('[data-act]');
   const act = control?.dataset.act;
+  if (state.pendingRecordIds.has(id)) return;
 
   if (act === 'select') {
     if (control.checked) state.selected.add(id); else state.selected.delete(id);
     updateBatchBar();
   } else if (act === 'toggle') {
     const done = control.checked;
-    withBusy(() => apiPost('update', { id, status: done ? 'done' : 'open' }), done ? '已完成 ✓' : '重新開啟');
+    updateTaskStatusOptimistically(id, done ? 'done' : 'open');
   } else if (act === 'delete') {
-    const message = record?.calendar_id ? '刪除這筆待辦？已連結的 Whence 行程也會移入最近刪除。' : '刪除這筆？（軟刪除，資料仍在試算表）';
-    if (confirm(message)) {
-      withBusy(() => apiPost('delete', { id }), '已刪除');
+    if (confirm(deleteConfirmationMessage(record))) {
+      withBusy(() => apiPost('delete', { id }), '已移至最近刪除', removeLocalRecords);
     } else {
       e.preventDefault();
     }
@@ -707,7 +823,7 @@ async function onListClick(e) {
 function onListChange(e) {
   const item = e.target.closest('.item');
   if (!item || e.target.dataset.act !== 'status') return;
-  withBusy(() => apiPost('update', { id: item.dataset.id, status: e.target.value }), '狀態已更新');
+  updateTaskStatusOptimistically(item.dataset.id, e.target.value);
 }
 
 // ===== 照片附件 =====
@@ -810,7 +926,7 @@ async function openAttachment(trigger) {
   $('#photo-full-image').hidden = true;
   $('#btn-close-photo').focus();
   try {
-    const attachment = await apiGet({ action: trigger.dataset.attachmentAction || 'attachment', file_id: fileId });
+    const attachment = await apiRead(trigger.dataset.attachmentAction || 'attachment', { file_id: fileId });
     $('#photo-full-image').src = `data:${attachment.mime_type};base64,${attachment.data}`;
     $('#photo-full-image').hidden = false;
     $('#photo-loading').hidden = true;
@@ -956,11 +1072,10 @@ async function saveEdit() {
   button.disabled = true;
   button.textContent = '儲存中…';
   try {
-    await apiPost('update', data);
+    const updated = await apiPost('update', data);
+    upsertLocalRecords(updated);
     closeEdit(true);
     toast(kind === 'task' && data.due_date ? '待辦與行程已更新' : '修改已儲存');
-    await loadList();
-    if (state.activeScreen === 'calendar') await loadCalendar();
   } catch (err) {
     toast(`儲存失敗：${err.message}`);
   } finally {
@@ -1036,7 +1151,8 @@ async function save() {
   const originalLabel = btn.textContent;
   btn.textContent = '儲存中…';
   try {
-    await apiPost('create', data);
+    const created = await apiPost('create', data);
+    upsertLocalRecords(created);
     $('#content').value = '';
     $('#tags').value = '';
     localStorage.setItem('whence_last_space', $('#space').value.trim());
@@ -1050,7 +1166,6 @@ async function save() {
     $('#btn-important').setAttribute('aria-pressed', 'false');
     $('#btn-urgent').setAttribute('aria-pressed', 'false');
     toast(state.activeKind === 'task' && data.due_date ? '待辦與行程已建立' : '已儲存 ✓');
-    await loadList();
     ok = true;
   } catch (err) {
     toast(`儲存失敗：${err.message}`);
@@ -1081,10 +1196,12 @@ function updateBatchBar() {
 async function batchCall(action, extra = {}) {
   const ids = [...state.selected];
   try {
-    await apiPost(action, { ids, ...extra });
+    return await apiPost(action, { ids, ...extra });
   } catch (err) {
     if (/需要 id/.test(err.message)) {
-      for (const id of ids) await apiPost(action, { id, ...extra });
+      const results = [];
+      for (const id of ids) results.push(await apiPost(action, { id, ...extra }));
+      return results;
     } else {
       throw err;
     }
@@ -1106,9 +1223,15 @@ async function batchApplyStatus() {
 
 async function batchDelete() {
   if (!state.selected.size) { toast('尚未選取任何項目'); return; }
-  if (!confirm(`刪除選取的 ${state.selected.size} 筆？（軟刪除，資料仍在試算表）`)) return;
+  const unfinishedTasks = [...state.selected].filter((id) => {
+    const record = state.records.find((item) => item.id === id);
+    const kind = record?.kind || (record?.type === 'todo' ? 'task' : 'note');
+    return kind === 'task' && !['done', 'cancelled'].includes(record?.status);
+  }).length;
+  const guidance = unfinishedTasks ? `\n\n其中 ${unfinishedTasks} 筆待辦尚未完成；若只是做完，建議先批次改為「完成」保留紀錄。` : '';
+  if (!confirm(`刪除選取的 ${state.selected.size} 筆？刪除後仍可從「最近刪除」復原。${guidance}`)) return;
   const count = state.selected.size;
-  const ok = await withBusy(() => batchCall('delete'), `已刪除 ${count} 筆`);
+  const ok = await withBusy(() => batchCall('delete'), `已移至最近刪除 ${count} 筆`, removeLocalRecords);
   if (ok) setBatch(false);
 }
 
@@ -1144,7 +1267,7 @@ async function saveSecret() {
   setSecret(s);
   $('#settings-hint').textContent = '連線測試中…';
   try {
-    await apiGet({ action: 'ping' });
+    await apiRead('ping');
     $('#settings-modal').hidden = true;
     toast('連線成功 ✓');
     await loadList();
@@ -1300,7 +1423,7 @@ async function loadEquipment() {
   let ok = false;
   $('#equipment-list').setAttribute('aria-busy', 'true');
   try {
-    const [equipmentRecords, records, calendarRecords, aliases] = await Promise.all([apiGet({ action: 'equipment_list' }), fetchAllRecords(), apiGet({ action: 'calendar_list' }).catch(() => []), apiGet({ action: 'customer_aliases' }).catch(() => ({}))]);
+    const [equipmentRecords, records, calendarRecords, aliases] = await Promise.all([apiRead('equipment_list'), fetchAllRecords(), apiRead('calendar_list').catch(() => []), apiRead('customer_aliases').catch(() => ({}))]);
     state.equipmentRecords = equipmentRecords; state.records = records; state.calendarRecords = calendarRecords; state.customerAliases = aliases;
     const renderStartedAt = perfNow();
     try {
@@ -1521,7 +1644,7 @@ async function loadCalendar(forceReconcile = false) {
       state.calendarRepairDone = true;
     }
     state.records = await fetchAllRecords();
-    state.calendarRecords = await apiGet({ action: 'calendar_live', start: start.toISOString(), end: end.toISOString() });
+    state.calendarRecords = await apiRead('calendar_live', { start: start.toISOString(), end: end.toISOString() });
     state.calendarSearchLoaded = false;
     const renderStartedAt = perfNow();
     try {
@@ -1677,7 +1800,7 @@ async function openTrash() {
   $('#trash-list').setAttribute('aria-busy', 'true');
   $('#trash-list').innerHTML = '<p class="today-empty">載入中…</p>';
   try {
-    const rows = await apiGet({ action: 'trash_list' });
+    const rows = await apiRead('trash_list');
     $('#trash-list').innerHTML = rows.length ? rows.map((item) => `<article class="trash-item" data-trash-id="${escapeHtml(item.id)}" data-trash-type="${escapeHtml(item.entity_type)}"><div><strong>${escapeHtml(item.title || '未命名')}</strong><span>${escapeHtml(TRASH_TYPE_LABELS[item.entity_type] || item.entity_type)}${item.subtitle ? ` · ${escapeHtml(item.subtitle)}` : ''} · ${fmtDate(item.deleted_at)}</span></div><button type="button" class="secondary-btn" data-trash-act="restore">復原</button></article>`).join('') : '<p class="today-empty">最近沒有刪除的資料</p>';
   } catch (err) { $('#trash-list').innerHTML = `<p class="today-empty">載入失敗：${escapeHtml(err.message)}</p>`; }
   finally { $('#trash-list').setAttribute('aria-busy', 'false'); }
@@ -1805,7 +1928,7 @@ function init() {
   $('#trash-list').addEventListener('click', (event) => { const button = event.target.closest('[data-trash-act="restore"]'); if (button) restoreTrashItem(button.closest('.trash-item')); });
   $('#trash-modal').addEventListener('click', (event) => { if (event.target === $('#trash-modal')) closeTrash(); });
   $('#btn-undo').addEventListener('click', () => {
-    if (confirm('撤回最後建立的一筆記錄？')) withBusy(() => apiPost('undo'), '已撤回');
+    if (confirm('撤回最後建立的一筆記錄？')) withBusy(() => apiPost('undo'), '已撤回', removeLocalRecords);
   });
 
   $('#btn-batch').addEventListener('click', () => setBatch(!state.batch));
@@ -1929,7 +2052,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.10.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.11.0').catch(() => {});
   }
 
   resetCalendarForm();

@@ -819,6 +819,9 @@ textarea::placeholder { color: #7f8aa0; }
 .item:hover { border-color: var(--border); }
 .item.done { opacity: 0.6; }
 .item.done .item-content { text-decoration: line-through; text-decoration-thickness: 1px; }
+.item.syncing { border-color: var(--accent); }
+.syncing-label { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.item-actions select:disabled { opacity: 0.58; cursor: wait; }
 
 .item input[type="checkbox"] {
   appearance: none;
