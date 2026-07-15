@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
 const SHANFANG_COPY = {
   daily: [
@@ -83,10 +83,12 @@ const state = {
   calendarRecords: [],
   calendarSearchRecords: [],
   calendarSearchLoaded: false,
+  recordsLoaded: false,
+  customerAliasesLoaded: false,
+  calendarWindowKey: '',
   calendarCursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   calendarSelected: new Date(),
   calendarView: 'month',
-  calendarRepairDone: false,
   customerAliases: {},
   occasionChecked: false,
 };
@@ -185,20 +187,42 @@ function clearPerformanceReport() {
 }
 
 // ===== API =====
+const READ_TIMEOUT_MS = 25 * 1000;
+const READ_MAX_ATTEMPTS = 2;
+
+function isRetryableReadError(error) {
+  return error?.name === 'AbortError' || error?.name === 'TypeError';
+}
+
 async function apiRead(action, data = {}) {
   const startedAt = perfNow();
   let json;
   let ok = false;
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ secret: getSecret(), action, data }),
-    });
-    json = await res.json();
-    if (!json.ok) throw new Error(json.error || '未知錯誤');
-    ok = true;
-    return json.data;
+    for (let attempt = 1; attempt <= READ_MAX_ATTEMPTS; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ secret: getSecret(), action, data }),
+          signal: controller.signal,
+        });
+        json = await res.json();
+        if (!json.ok) throw new Error(json.error || '未知錯誤');
+        ok = true;
+        return json.data;
+      } catch (error) {
+        if (!isRetryableReadError(error) || attempt === READ_MAX_ATTEMPTS) {
+          if (error?.name === 'AbortError') throw new Error('讀取逾時，請檢查網路後再試');
+          throw error;
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    throw new Error('讀取失敗，請稍後再試');
   } finally {
     perfRecord(`API READ ${String(action || 'unknown')}`, startedAt, { ok, serverMs: json?.server_ms });
   }
@@ -216,6 +240,7 @@ async function apiPost(action, data = {}) {
     });
     json = await res.json();
     if (!json.ok) throw new Error(json.error || '未知錯誤');
+    invalidateFullRecordRead();
     ok = true;
     return json.data;
   } finally {
@@ -224,7 +249,23 @@ async function apiPost(action, data = {}) {
 }
 
 /** 分頁讀取完整清單；若暫時連到不支援 offset 的舊後端，偵測重複頁後安全停止。 */
-async function fetchAllRecords() {
+let fetchAllRecordsPromise = null;
+
+function invalidateFullRecordRead() {
+  fetchAllRecordsPromise = null;
+}
+
+function fetchAllRecords() {
+  if (fetchAllRecordsPromise) return fetchAllRecordsPromise;
+  const request = fetchAllRecordsOnce();
+  const wrapped = request.finally(() => {
+    if (fetchAllRecordsPromise === wrapped) fetchAllRecordsPromise = null;
+  });
+  fetchAllRecordsPromise = wrapped;
+  return wrapped;
+}
+
+async function fetchAllRecordsOnce() {
   const startedAt = perfNow();
   const pageSize = 200;
   const all = [];
@@ -334,6 +375,7 @@ async function loadList() {
       apiRead('equipment_list').catch(() => []),
     ]);
     state.records = records;
+    state.recordsLoaded = true;
     state.calendarRecords = calendarRecords;
     state.equipmentRecords = equipmentRecords;
     const renderStartedAt = perfNow();
@@ -1378,7 +1420,7 @@ function renderCustomerTimeline(customer) {
   const records = statusFilter ? [] : state.records.filter((record) => !linkedRecordIds.has(record.id) && (equipmentIds.has(record.equipment_id) || `${record.content} ${record.tags}`.toLowerCase().includes(customerText)))
     .filter((record) => (!keyword || `${record.content} ${record.tags} ${record.space}`.toLowerCase().includes(keyword)) && timelineDateAllowed(record.created_at));
   const recordIds = new Set(records.map((record) => record.id));
-  const calendar = statusFilter ? [] : state.calendarRecords.filter((record) => recordIds.has(record.linked_event_id) || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(customerText))
+  const calendar = statusFilter ? [] : state.calendarSearchRecords.filter((record) => recordIds.has(record.linked_event_id) || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(customerText))
     .filter((record) => (!keyword || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(keyword)) && timelineDateAllowed(record.start_time));
   const items = equipment.map((data) => ({ type: 'equipment', date: data.occurred_at || data.created_at, data }))
     .concat(records.map((data) => ({ type: data.kind || 'note', date: data.created_at, data })), calendar.map((data) => ({ type: 'calendar', date: data.start_time, data })))
@@ -1431,8 +1473,28 @@ async function loadEquipment() {
   let ok = false;
   $('#equipment-list').setAttribute('aria-busy', 'true');
   try {
-    const [equipmentRecords, records, calendarRecords, aliases] = await Promise.all([apiRead('equipment_list'), fetchAllRecords(), apiRead('calendar_list').catch(() => []), apiRead('customer_aliases').catch(() => ({}))]);
-    state.equipmentRecords = equipmentRecords; state.records = records; state.calendarRecords = calendarRecords; state.customerAliases = aliases;
+    if (state.equipmentRecords.length) {
+      renderEquipmentSuggestions();
+      renderEquipmentCustomerFilter();
+      renderEquipmentList();
+    }
+    const recordsRequest = state.recordsLoaded ? Promise.resolve(state.records) : fetchAllRecords();
+    const calendarRequest = state.calendarSearchLoaded ? Promise.resolve(state.calendarSearchRecords) : apiRead('calendar_list').catch(() => null);
+    const aliasesRequest = state.customerAliasesLoaded ? Promise.resolve(state.customerAliases) : apiRead('customer_aliases').catch(() => null);
+    const [equipmentRecords, records, calendarRecords, aliases] = await Promise.all([
+      apiRead('equipment_list'), recordsRequest, calendarRequest, aliasesRequest,
+    ]);
+    state.equipmentRecords = equipmentRecords;
+    state.records = records;
+    state.recordsLoaded = true;
+    if (calendarRecords) {
+      state.calendarSearchRecords = calendarRecords;
+      state.calendarSearchLoaded = true;
+    }
+    if (aliases) {
+      state.customerAliases = aliases;
+      state.customerAliasesLoaded = true;
+    }
     const renderStartedAt = perfNow();
     try {
       renderEquipmentSuggestions();
@@ -1459,6 +1521,7 @@ async function mergeSelectedCustomer() {
   if (!confirm(`之後將「${sourceLabel}」統一顯示為「${canonical.trim()}」，不改寫歷史紀錄。確定嗎？`)) return;
   try {
     state.customerAliases = await apiPost('customer_alias_set', { alias: sourceLabel, canonical: canonical.trim() });
+    state.customerAliasesLoaded = true;
     renderEquipmentCustomerFilter(); $('#equipment-customer-filter').value = customerKey(sourceLabel); renderEquipmentMachineFilter(); renderEquipmentList(); toast('客戶名稱已合併顯示');
   } catch (err) { toast(`合併失敗：${err.message}`); }
 }
@@ -1600,7 +1663,7 @@ async function openTaskInCalendar(id) {
   if (!task) return;
   if (!task.calendar_id) { openEdit(id); return; }
   switchScreen('calendar');
-  if (!state.calendarRecords.length) await loadCalendar();
+  if (!state.calendarRecords.length) await loadCalendar(false, true);
   const linked = state.calendarRecords.find((record) => record.id === task.calendar_id);
   if (linked) editCalendar(linked.id);
   else toast('找不到已連結行程，請重新整理後再試');
@@ -1609,6 +1672,7 @@ async function openTaskInCalendar(id) {
 /** 同月份視窗一分鐘內只對帳一次；App 回到前景時也會自動檢查。 */
 const reconcileDoneAt = new Map();
 const RECONCILE_TTL = 60 * 1000;
+const reconcileInFlight = new Map();
 
 function currentCalendarWindow() {
   const start = new Date(state.calendarCursor); start.setDate(start.getDate() - 7);
@@ -1620,8 +1684,18 @@ async function reconcileCurrentCalendar(force = false) {
   const { start, end } = currentCalendarWindow();
   const reconcileKey = `${state.calendarCursor.getFullYear()}-${state.calendarCursor.getMonth()}`;
   if (!force && Date.now() - (reconcileDoneAt.get(reconcileKey) || 0) <= RECONCILE_TTL) return { start, end, skipped: true };
-  await apiPost('calendar_reconcile', { start: start.toISOString(), end: end.toISOString() });
-  reconcileDoneAt.set(reconcileKey, Date.now());
+  if (reconcileInFlight.has(reconcileKey)) {
+    await reconcileInFlight.get(reconcileKey);
+    return { start, end, skipped: false };
+  }
+  const request = apiPost('calendar_reconcile', { start: start.toISOString(), end: end.toISOString() });
+  reconcileInFlight.set(reconcileKey, request);
+  try {
+    await request;
+    reconcileDoneAt.set(reconcileKey, Date.now());
+  } finally {
+    if (reconcileInFlight.get(reconcileKey) === request) reconcileInFlight.delete(reconcileKey);
+  }
   return { start, end, skipped: false };
 }
 
@@ -1632,7 +1706,7 @@ function syncCalendarOnResume(event) {
   calendarResumeSyncPromise = reconcileCurrentCalendar(false)
     .then((result) => {
       if (result.skipped) return null;
-      if (state.activeScreen === 'calendar') return loadCalendar();
+      if (state.activeScreen === 'calendar') return loadCalendar(false, true);
       if (state.activeScreen === 'equipment') return loadEquipment();
       return loadList();
     })
@@ -1640,28 +1714,75 @@ function syncCalendarOnResume(event) {
     .finally(() => { calendarResumeSyncPromise = null; });
 }
 
-async function loadCalendar(forceReconcile = false) {
+let calendarLoadGeneration = 0;
+
+function calendarWindowKey(start, end) {
+  return `${start.toISOString()}|${end.toISOString()}`;
+}
+
+async function fetchCalendarSnapshot(start, end) {
+  const [records, calendarRecords] = await Promise.all([fetchAllRecords(), apiRead('calendar_live', {
+    start: start.toISOString(), end: end.toISOString(),
+  })]);
+  return { records, calendarRecords };
+}
+
+function applyCalendarSnapshot(snapshot, start, end, generation) {
+  if (generation !== calendarLoadGeneration) return false;
+  state.records = snapshot.records;
+  state.recordsLoaded = true;
+  state.calendarRecords = snapshot.calendarRecords;
+  state.calendarWindowKey = calendarWindowKey(start, end);
+  state.calendarSearchLoaded = false;
+  const renderStartedAt = perfNow();
+  try {
+    renderCalendarList();
+    renderMonthCalendar();
+    updateAppBadge();
+  } finally {
+    perfRecord('行程資料渲染', renderStartedAt);
+  }
+  return true;
+}
+
+function refreshCalendarInBackground(start, end, generation) {
   const startedAt = perfNow();
+  const expectedKey = calendarWindowKey(start, end);
+  reconcileCurrentCalendar(false)
+    .then(async (result) => {
+      if (generation !== calendarLoadGeneration) return;
+      if (result.skipped && state.calendarWindowKey === expectedKey) return;
+      const snapshot = await fetchCalendarSnapshot(start, end);
+      applyCalendarSnapshot(snapshot, start, end, generation);
+    })
+    .catch((error) => {
+      if (generation === calendarLoadGeneration) toast(`日曆同步失敗：${error.message}`);
+    })
+    .finally(() => perfRecord('行程背景同步', startedAt));
+}
+
+async function loadCalendar(forceReconcile = false, snapshotOnly = false) {
+  const startedAt = perfNow();
+  const generation = ++calendarLoadGeneration;
   let ok = false;
   $('#calendar-list').setAttribute('aria-busy', 'true');
   try {
-    if (!state.records.length) state.records = await fetchAllRecords();
-    const { start, end } = await reconcileCurrentCalendar(forceReconcile);
-    if (!state.calendarRepairDone) {
-      await apiPost('task_calendar_repair');
-      state.calendarRepairDone = true;
-    }
-    state.records = await fetchAllRecords();
-    state.calendarRecords = await apiRead('calendar_live', { start: start.toISOString(), end: end.toISOString() });
-    state.calendarSearchLoaded = false;
-    const renderStartedAt = perfNow();
-    try {
+    const { start, end } = currentCalendarWindow();
+    if (!forceReconcile && !snapshotOnly && state.recordsLoaded) {
       renderCalendarList();
       renderMonthCalendar();
       updateAppBadge();
-    } finally {
-      perfRecord('行程資料渲染', renderStartedAt);
+      refreshCalendarInBackground(start, end, generation);
+      ok = true;
+      return;
     }
+    if (forceReconcile) {
+      await reconcileCurrentCalendar(true);
+      if (generation !== calendarLoadGeneration) return;
+    }
+    const snapshot = await fetchCalendarSnapshot(start, end);
+    applyCalendarSnapshot(snapshot, start, end, generation);
+    if (!forceReconcile && !snapshotOnly) refreshCalendarInBackground(start, end, generation);
     ok = true;
   } catch (err) {
     $('#calendar-list').innerHTML = `<p class="empty">行程載入失敗：${escapeHtml(err.message)}</p>`;
@@ -1847,6 +1968,7 @@ function keepFocusedControlVisible() {
 function switchScreen(screen, updateHash = true) {
   const startedAt = perfNow();
   const nextScreen = ['notebook', 'equipment', 'calendar'].includes(screen) ? screen : 'records';
+  if (state.activeScreen === 'calendar' && nextScreen !== 'calendar') calendarLoadGeneration += 1;
   state.screenScroll[state.activeScreen] = window.scrollY || 0;
   state.activeScreen = nextScreen;
   $('#records-screen').hidden = state.activeScreen !== 'records';
@@ -2060,7 +2182,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.0.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.0.1').catch(() => {});
   }
 
   resetCalendarForm();
