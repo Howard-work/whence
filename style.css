@@ -774,11 +774,25 @@ textarea {
 .customer-timeline-item > div:first-child { min-width: 0; }
 .customer-timeline-item strong, .customer-timeline-item span { display: block; }
 .customer-timeline-item span, .customer-timeline-item time { color: var(--muted); font-size: 12px; }
-.customer-timeline-item.type-equipment { border-left-color: var(--ok); }
+.customer-timeline-item.type-equipment { display: block; border-left-color: var(--ok); }
 .customer-timeline-item.type-equipment::before { background: var(--ok); }
+.customer-timeline-item.type-equipment .equipment-item-head { width: 100%; }
+.customer-timeline-item.type-equipment .equipment-action { margin-top: 12px; }
+.customer-timeline-item.type-equipment .item-meta { margin-top: 8px; }
+.customer-timeline-item.type-equipment .equipment-edit { display: block; width: fit-content; margin: 4px 0 0 auto; }
 .customer-timeline-item.type-calendar { border-left-color: var(--origin); }
 .customer-timeline-item.type-calendar::before { background: var(--origin); }
-@media (max-width: 520px) { .equipment-timeline-filters { grid-template-columns: 1fr; } }
+@media (max-width: 520px) {
+  .equipment-timeline-filters { grid-template-columns: 1fr; }
+  .customer-timeline-item { margin-left: 18px; padding: 14px; }
+  .customer-timeline-item::before { left: -23px; }
+  .customer-timeline-item::after { left: -19px; }
+  .customer-timeline-item.type-equipment .equipment-item-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .customer-timeline-item.type-equipment .equipment-item-head strong { overflow-wrap: anywhere; }
+  .customer-timeline-item.type-equipment .equipment-head-side { width: 100%; align-items: center; justify-content: space-between; flex-direction: row; gap: 10px; }
+  .customer-timeline-item.type-equipment .equipment-status-badge { flex: 0 0 auto; }
+  .customer-timeline-item.type-equipment .equipment-action { width: 100%; }
+}
 .equipment-item p { margin: 12px 0 8px; color: var(--text); overflow-wrap: anywhere; }
 .equipment-action { padding: 9px 10px; border-radius: 9px; background: var(--surface-raised); color: var(--muted); font-size: 14px; }
 .equipment-action span { margin-right: 8px; color: var(--ok); font-size: 12px; font-weight: 700; }
