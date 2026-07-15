@@ -1071,6 +1071,12 @@ textarea::placeholder { color: #7f8aa0; }
   animation: modal-in 180ms ease-out;
 }
 
+#settings-modal .modal-body {
+  max-height: calc(var(--visual-viewport-height) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .modal-heading { margin-bottom: 12px; }
 
 .modal-copy {
@@ -1151,6 +1157,43 @@ body.keyboard-open .modal-body {
   margin: 10px 2px 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.performance-debug {
+  margin-top: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.performance-debug > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--touch);
+  padding: 10px 14px;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.performance-debug > summary span { color: var(--muted); font-size: 12px; font-weight: 500; }
+.performance-debug-body { padding: 2px 14px 14px; border-top: 1px solid var(--border-soft); }
+.performance-debug-body > p { margin: 12px 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.performance-debug-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.performance-debug-actions .secondary-btn { width: 100%; margin: 0; }
+.performance-debug pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--muted);
+  font: 12px/1.6 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 #toast {

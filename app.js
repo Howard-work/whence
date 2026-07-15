@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.9.2';
+const APP_VERSION = '0.10.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -94,45 +94,156 @@ const state = {
 const getSecret = () => localStorage.getItem('whence_secret') || '';
 const setSecret = (s) => localStorage.setItem('whence_secret', s);
 
+// ===== 效能檢測（只記錄操作名稱與耗時，不記錄內容、SECRET 或 API 參數） =====
+const PERF_DEBUG_KEY = 'whence_perf_debug';
+const PERF_ENTRIES_KEY = 'whence_perf_entries';
+const PERF_MAX_ENTRIES = 150;
+function loadPerformanceEntries() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PERF_ENTRIES_KEY) || '[]');
+    if (!Array.isArray(saved)) return [];
+    return saved.slice(-PERF_MAX_ENTRIES).map((entry) => ({
+      at: String(entry.at || ''),
+      name: String(entry.name || '').slice(0, 80),
+      durationMs: Math.max(0, Math.round(Number(entry.durationMs) || 0)),
+      serverMs: entry.serverMs === null ? null : Math.max(0, Math.round(Number(entry.serverMs) || 0)),
+      ok: entry.ok !== false,
+    }));
+  } catch (_) {
+    return [];
+  }
+}
+const perfEntries = loadPerformanceEntries();
+const perfNow = () => window.performance?.now?.() ?? Date.now();
+const perfEnabled = () => localStorage.getItem(PERF_DEBUG_KEY) === '1';
+
+function perfRecord(name, startedAt, options = {}) {
+  if (!perfEnabled()) return;
+  const durationMs = Math.max(0, Math.round(perfNow() - startedAt));
+  const serverMs = Number(options.serverMs);
+  perfEntries.push({
+    at: new Date().toISOString(),
+    name: String(name).slice(0, 80),
+    durationMs,
+    serverMs: Number.isFinite(serverMs) ? Math.max(0, Math.round(serverMs)) : null,
+    ok: options.ok !== false,
+  });
+  if (perfEntries.length > PERF_MAX_ENTRIES) perfEntries.splice(0, perfEntries.length - PERF_MAX_ENTRIES);
+  localStorage.setItem(PERF_ENTRIES_KEY, JSON.stringify(perfEntries));
+  renderPerformanceReport();
+}
+
+function performanceReportText() {
+  const lines = [
+    `Whence v${APP_VERSION} 效能報告`,
+    `產生時間：${new Date().toLocaleString('zh-TW')}`,
+    `筆數：${perfEntries.length}`,
+    '說明：僅含操作名稱與耗時，不含記事內容、SECRET 或 API 參數。',
+    '',
+  ];
+  if (!perfEntries.length) lines.push('尚無資料。啟用後照常操作 Whence，即會開始記錄。');
+  perfEntries.forEach((entry) => {
+    const time = new Date(entry.at).toLocaleTimeString('zh-TW', { hour12: false });
+    const gas = entry.serverMs === null ? '' : `；GAS ${entry.serverMs}ms`;
+    lines.push(`[${time}] ${entry.name}：${entry.durationMs}ms${gas}；${entry.ok ? '成功' : '失敗'}`);
+  });
+  return lines.join('\n');
+}
+
+function renderPerformanceReport() {
+  const status = $('#performance-debug-status');
+  const report = $('#performance-report');
+  const toggle = $('#performance-debug-toggle');
+  if (!status || !report || !toggle) return;
+  const enabled = perfEnabled();
+  status.textContent = enabled ? `已啟用 · ${perfEntries.length} 筆` : '已關閉';
+  toggle.checked = enabled;
+  report.textContent = performanceReportText();
+}
+
+function setPerformanceDebug(enabled) {
+  localStorage.setItem(PERF_DEBUG_KEY, enabled ? '1' : '0');
+  renderPerformanceReport();
+  toast(enabled ? '效能檢測已啟用' : '效能檢測已關閉');
+}
+
+async function copyPerformanceReport() {
+  try {
+    await navigator.clipboard.writeText(performanceReportText());
+    toast('效能報告已複製');
+  } catch (_) {
+    toast('無法複製，請長按報告內容手動複製');
+  }
+}
+
+function clearPerformanceReport() {
+  perfEntries.length = 0;
+  localStorage.removeItem(PERF_ENTRIES_KEY);
+  renderPerformanceReport();
+  toast('效能紀錄已清除');
+}
+
 // ===== API =====
 async function apiGet(params = {}) {
+  const startedAt = perfNow();
+  let json;
+  let ok = false;
   const q = new URLSearchParams({ secret: getSecret(), ...params });
-  const res = await fetch(`${API_URL}?${q}`);
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || '未知錯誤');
-  return json.data;
+  try {
+    const res = await fetch(`${API_URL}?${q}`);
+    json = await res.json();
+    if (!json.ok) throw new Error(json.error || '未知錯誤');
+    ok = true;
+    return json.data;
+  } finally {
+    perfRecord(`API GET ${String(params.action || 'list')}`, startedAt, { ok, serverMs: json?.server_ms });
+  }
 }
 
 async function apiPost(action, data = {}) {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' }, // simple request，避開 CORS preflight
-    body: JSON.stringify({ secret: getSecret(), action, data }),
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || '未知錯誤');
-  return json.data;
+  const startedAt = perfNow();
+  let json;
+  let ok = false;
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // simple request，避開 CORS preflight
+      body: JSON.stringify({ secret: getSecret(), action, data }),
+    });
+    json = await res.json();
+    if (!json.ok) throw new Error(json.error || '未知錯誤');
+    ok = true;
+    return json.data;
+  } finally {
+    perfRecord(`API POST ${String(action || 'unknown')}`, startedAt, { ok, serverMs: json?.server_ms });
+  }
 }
 
 /** 分頁讀取完整清單；若暫時連到不支援 offset 的舊後端，偵測重複頁後安全停止。 */
 async function fetchAllRecords() {
+  const startedAt = perfNow();
   const pageSize = 200;
   const all = [];
   const seen = new Set();
+  let ok = false;
+  try {
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await apiGet({ action: 'list', limit: pageSize, offset });
+      let added = 0;
+      page.forEach((record) => {
+        if (seen.has(record.id)) return;
+        seen.add(record.id);
+        all.push(record);
+        added += 1;
+      });
 
-  for (let offset = 0; ; offset += pageSize) {
-    const page = await apiGet({ action: 'list', limit: pageSize, offset });
-    let added = 0;
-    page.forEach((record) => {
-      if (seen.has(record.id)) return;
-      seen.add(record.id);
-      all.push(record);
-      added += 1;
-    });
-
-    if (page.length < pageSize || added === 0) break;
+      if (page.length < pageSize || added === 0) break;
+    }
+    ok = true;
+    return all;
+  } finally {
+    perfRecord('完整記錄下載', startedAt, { ok });
   }
-  return all;
 }
 
 // ===== DOM 工具 =====
@@ -204,6 +315,8 @@ function toast(msg, withNote = true) {
 
 // ===== 清單 =====
 async function loadList() {
+  const startedAt = perfNow();
+  let ok = false;
   $('#list').setAttribute('aria-busy', 'true');
   $('#list').innerHTML = '<p class="empty">載入中…</p>';
   $('#notebook-list').setAttribute('aria-busy', 'true');
@@ -219,12 +332,18 @@ async function loadList() {
     state.records = records;
     state.calendarRecords = calendarRecords;
     state.equipmentRecords = equipmentRecords;
-    renderTagChips();
-    renderSpaceOptions();
-    renderList();
-    renderNotebook();
-    showOccasionIfNeeded(records.length);
-    updateAppBadge();
+    const renderStartedAt = perfNow();
+    try {
+      renderTagChips();
+      renderSpaceOptions();
+      renderList();
+      renderNotebook();
+      showOccasionIfNeeded(records.length);
+      updateAppBadge();
+    } finally {
+      perfRecord('首頁資料渲染', renderStartedAt);
+    }
+    ok = true;
   } catch (err) {
     $('#list').innerHTML = `<p class="empty">載入失敗：${escapeHtml(err.message)}</p>`;
     $('#notebook-list').innerHTML = `<p class="empty">札記載入失敗：${escapeHtml(err.message)}</p>`;
@@ -232,6 +351,7 @@ async function loadList() {
   } finally {
     $('#list').setAttribute('aria-busy', 'false');
     $('#notebook-list').setAttribute('aria-busy', 'false');
+    perfRecord('首頁完整載入', startedAt, { ok });
   }
 }
 
@@ -910,6 +1030,8 @@ async function save() {
   }
 
   const btn = $('#btn-save');
+  const startedAt = perfNow();
+  let ok = false;
   btn.disabled = true;
   const originalLabel = btn.textContent;
   btn.textContent = '儲存中…';
@@ -929,11 +1051,13 @@ async function save() {
     $('#btn-urgent').setAttribute('aria-pressed', 'false');
     toast(state.activeKind === 'task' && data.due_date ? '待辦與行程已建立' : '已儲存 ✓');
     await loadList();
+    ok = true;
   } catch (err) {
     toast(`儲存失敗：${err.message}`);
   } finally {
     btn.disabled = false;
     btn.textContent = originalLabel;
+    perfRecord('新增記錄完整流程', startedAt, { ok });
   }
 }
 
@@ -996,6 +1120,7 @@ function openSettings(hint) {
   $('#btn-toggle-secret').textContent = '顯示';
   $('#btn-toggle-secret').setAttribute('aria-pressed', 'false');
   $('#settings-hint').textContent = hint || '';
+  renderPerformanceReport();
   $('#settings-modal').hidden = false;
   input.focus();
 }
@@ -1171,17 +1296,26 @@ function renderEquipmentList() {
 }
 
 async function loadEquipment() {
+  const startedAt = perfNow();
+  let ok = false;
   $('#equipment-list').setAttribute('aria-busy', 'true');
   try {
     const [equipmentRecords, records, calendarRecords, aliases] = await Promise.all([apiGet({ action: 'equipment_list' }), fetchAllRecords(), apiGet({ action: 'calendar_list' }).catch(() => []), apiGet({ action: 'customer_aliases' }).catch(() => ({}))]);
     state.equipmentRecords = equipmentRecords; state.records = records; state.calendarRecords = calendarRecords; state.customerAliases = aliases;
-    renderEquipmentSuggestions();
-    renderEquipmentCustomerFilter();
-    renderEquipmentList();
+    const renderStartedAt = perfNow();
+    try {
+      renderEquipmentSuggestions();
+      renderEquipmentCustomerFilter();
+      renderEquipmentList();
+    } finally {
+      perfRecord('設備資料渲染', renderStartedAt);
+    }
+    ok = true;
   } catch (err) {
     $('#equipment-list').innerHTML = `<div class="empty">設備紀錄載入失敗：${escapeHtml(err.message)}</div>`;
   } finally {
     $('#equipment-list').setAttribute('aria-busy', 'false');
+    perfRecord('設備完整載入', startedAt, { ok });
   }
 }
 
@@ -1346,6 +1480,8 @@ const reconcileDoneAt = new Map();
 const RECONCILE_TTL = 10 * 60 * 1000;
 
 async function loadCalendar(forceReconcile = false) {
+  const startedAt = perfNow();
+  let ok = false;
   $('#calendar-list').setAttribute('aria-busy', 'true');
   try {
     if (!state.records.length) state.records = await fetchAllRecords();
@@ -1363,12 +1499,21 @@ async function loadCalendar(forceReconcile = false) {
     state.records = await fetchAllRecords();
     state.calendarRecords = await apiGet({ action: 'calendar_live', start: start.toISOString(), end: end.toISOString() });
     state.calendarSearchLoaded = false;
-    renderCalendarList();
-    renderMonthCalendar();
-    updateAppBadge();
+    const renderStartedAt = perfNow();
+    try {
+      renderCalendarList();
+      renderMonthCalendar();
+      updateAppBadge();
+    } finally {
+      perfRecord('行程資料渲染', renderStartedAt);
+    }
+    ok = true;
   } catch (err) {
     $('#calendar-list').innerHTML = `<p class="empty">行程載入失敗：${escapeHtml(err.message)}</p>`;
-  } finally { $('#calendar-list').setAttribute('aria-busy', 'false'); }
+  } finally {
+    $('#calendar-list').setAttribute('aria-busy', 'false');
+    perfRecord('行程完整載入', startedAt, { ok });
+  }
 }
 
 async function moveCalendarMonth(offset) {
@@ -1545,6 +1690,7 @@ function keepFocusedControlVisible() {
 }
 
 function switchScreen(screen, updateHash = true) {
+  const startedAt = perfNow();
   const nextScreen = ['notebook', 'equipment', 'calendar'].includes(screen) ? screen : 'records';
   state.screenScroll[state.activeScreen] = window.scrollY || 0;
   state.activeScreen = nextScreen;
@@ -1570,6 +1716,7 @@ function switchScreen(screen, updateHash = true) {
   }
   const restoreScroll = () => window.scrollTo({ top: state.screenScroll[state.activeScreen] || 0, behavior: 'instant' });
   if (window.requestAnimationFrame) window.requestAnimationFrame(restoreScroll); else restoreScroll();
+  perfRecord(`切換畫面 ${state.activeScreen}`, startedAt);
 }
 
 // ===== 初始化 =====
@@ -1608,6 +1755,9 @@ function init() {
   $('#btn-settings').addEventListener('click', () => openSettings());
   $('#btn-close-settings').addEventListener('click', closeSettings);
   $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
+  $('#performance-debug-toggle').addEventListener('change', (event) => setPerformanceDebug(event.target.checked));
+  $('#btn-copy-performance').addEventListener('click', copyPerformanceReport);
+  $('#btn-clear-performance').addEventListener('click', clearPerformanceReport);
   $('#btn-close-photo').addEventListener('click', closePhotoModal);
   $('#btn-close-edit').addEventListener('click', () => closeEdit());
   $('#btn-save-edit').addEventListener('click', saveEdit);
@@ -1753,7 +1903,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.9.2').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.10.0').catch(() => {});
   }
 
   resetCalendarForm();
