@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=1.1.0-r6">
+  <link rel="stylesheet" href="./style.css?v=1.1.0-r8">
 </head>
 <body data-screen="records">
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -61,14 +61,14 @@
         <button type="button" class="type-btn" data-kind="idea" aria-pressed="false">札記</button>
       </div>
 
-      <label class="field-label" for="content">一句話</label>
-      <textarea id="content" rows="2" placeholder="現在想留下什麼？"></textarea>
+      <label class="field-label" for="content">主題</label>
+      <textarea id="content" rows="2" placeholder="這件事的主題是什麼？"></textarea>
 
       <div class="space-quick" aria-label="快速選擇 Space">
-        <button type="button" class="space-btn" data-space="工作" aria-label="工作" aria-pressed="false"><span aria-hidden="true">工</span>工作</button>
-        <button type="button" class="space-btn" data-space="生活" aria-label="生活" aria-pressed="false"><span aria-hidden="true">生</span>生活</button>
-        <button type="button" class="space-btn" data-space="學習" aria-label="學習" aria-pressed="false"><span aria-hidden="true">學</span>學習</button>
-        <button type="button" class="space-btn" data-space="專案" aria-label="專案" aria-pressed="false"><span aria-hidden="true">專</span>專案</button>
+        <button type="button" class="space-btn" data-space="工作" aria-label="工作" aria-pressed="false"><span class="space-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="12.5" rx="2"/><path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7M3.5 12.5h17M10 12.5v2h4v-2"/></svg></span><span class="space-label">工作</span></button>
+        <button type="button" class="space-btn" data-space="生活" aria-label="生活" aria-pressed="false"><span class="space-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 4.5C11 4.5 5.5 9 5.5 15.5c0 2.5 1.8 4 4.2 4C16 19.5 20 13.5 20 4.5Z"/><path d="M4 20c3.2-4.5 7-7.5 12-10"/></svg></span><span class="space-label">生活</span></button>
+        <button type="button" class="space-btn" data-space="學習" aria-label="學習" aria-pressed="false"><span class="space-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8.5 12 4l9 4.5-9 4.5z"/><path d="M6.5 10.3V15c2.6 2.3 8.4 2.3 11 0v-4.7M21 9v6"/></svg></span><span class="space-label">學習</span></button>
+        <button type="button" class="space-btn" data-space="專案" aria-label="專案" aria-pressed="false"><span class="space-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m5 12 7 4 7-4M5 16l7 4 7-4"/></svg></span><span class="space-label">專案</span></button>
       </div>
 
       <details id="advanced-options" class="advanced-options">
@@ -138,8 +138,14 @@
     <section class="filter-bar" aria-labelledby="records-title">
       <button type="button" id="btn-batch" class="batch-toggle" aria-pressed="false">批次管理</button>
 
-      <label class="sr-only" for="search">搜尋內容或標籤</label>
-      <input id="search" type="search" placeholder="搜尋內容或標籤…">
+      <label class="sr-only" for="search">搜尋主題或標籤</label>
+      <div class="search-submit-row">
+        <input id="search" type="search" placeholder="搜尋主題或標籤…">
+        <button type="button" id="btn-show-search-results" class="search-submit" aria-label="前往搜尋結果">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+          <span>看結果</span>
+        </button>
+      </div>
       <div class="filter-row">
         <label class="sr-only" for="filter-space">篩選 Space</label>
         <select id="filter-space"><option value="">全部 Space</option></select>
@@ -285,10 +291,10 @@
   </main>
 
   <nav class="app-nav" aria-label="主要功能">
-    <button type="button" class="app-nav-btn active" data-screen="records" aria-pressed="true"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg><span>記錄</span></button>
-    <button type="button" class="app-nav-btn" data-screen="notebook" aria-pressed="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h10a2 2 0 0 1 2 2v16H8a2 2 0 0 1-2-2zM9 7h6M9 11h6"/></svg><span>札記</span></button>
-    <button type="button" class="app-nav-btn" data-screen="equipment" aria-pressed="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 6.3 3-3a5 5 0 0 1-6.4 6.4l-7 7a2.1 2.1 0 0 0 3 3l7-7a5 5 0 0 1 6.4-6.4l-3 3z"/></svg><span>設備</span></button>
-    <button type="button" class="app-nav-btn" data-screen="calendar" aria-pressed="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM8 3v6M16 3v6M4 10h16"/></svg><span>行程</span></button>
+    <button type="button" class="app-nav-btn active" data-screen="records" aria-pressed="true"><span class="app-nav-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span><span>記錄</span></button>
+    <button type="button" class="app-nav-btn" data-screen="notebook" aria-pressed="false"><span class="app-nav-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h5v17H7a2.5 2.5 0 0 0-2.5 1zM19.5 5.5A2.5 2.5 0 0 0 17 3h-5v17h5a2.5 2.5 0 0 1 2.5 1z"/></svg></span><span>札記</span></button>
+    <button type="button" class="app-nav-btn" data-screen="equipment" aria-pressed="false"><span class="app-nav-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0 4.8 5.8l-8.1 8.1a2.1 2.1 0 0 1-3-3l8.1-8.1a4 4 0 0 0 5.8-4.8l-2.8 2.8-2.8-2.8z"/></svg></span><span>設備</span></button>
+    <button type="button" class="app-nav-btn" data-screen="calendar" aria-pressed="false"><span class="app-nav-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="15" rx="2"/><path d="M8 3v5M16 3v5M3.5 10h17M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span><span>行程</span></button>
   </nav>
 
   <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
@@ -453,6 +459,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=1.1.0-r6"></script>
+  <script src="./app.js?v=1.1.0-r8"></script>
 </body>
 </html>

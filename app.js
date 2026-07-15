@@ -77,7 +77,6 @@ const state = {
   notebookSpace: '',
   notebookTag: '',
   notebookDetailId: '',
-  screenScroll: {},
   equipmentEditingId: '',
   equipmentEditAttachment: null,
   equipmentEditRemoveAttachment: false,
@@ -460,28 +459,32 @@ function renderRecordCards(rows) {
     const statusOptions = Object.entries(STATUS_LABELS)
       .map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('');
     const attachment = parseAttachments(r.attachments)[0];
+    const spaceTone = ({ 工作: 'work', 生活: 'life', 學習: 'learning', 專案: 'project' })[String(r.space || '').trim()] || 'other';
     const checkbox = state.batch
       ? `<input type="checkbox" aria-label="選取：${escapeHtml(r.content)}" ${state.selected.has(r.id) ? 'checked' : ''} data-act="select">`
       : kind === 'task'
         ? `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} ${pending ? 'disabled' : ''} data-act="toggle">`
         : '<span class="kind-marker" aria-hidden="true"></span>';
     return `
-    <div class="item ${done ? 'done' : ''} ${pending ? 'syncing' : ''}" data-id="${r.id}" aria-busy="${pending}">
+    <div class="item space-${spaceTone} ${done ? 'done' : ''} ${pending ? 'syncing' : ''}" data-id="${r.id}" aria-busy="${pending}">
       ${checkbox}
       <div class="item-main">
         <div class="item-content">${escapeHtml(r.content)}</div>
-        <div class="item-meta">
-          <span class="badge kind-${kind}">${KIND_LABELS[kind] || kind}</span>
-          ${r.space ? `<span class="space-meta">${escapeHtml(r.space)}</span>` : ''}
-          ${r.important === 'Y' ? '<span class="badge important">重要</span>' : ''}
-          ${r.urgent === 'Y' ? '<span class="badge urgent">緊急</span>' : ''}
-          ${tags}
-          ${r.due_date ? `<span class="due-meta">到期 ${fmtDue(r)}</span>` : ''}
-          ${r.calendar_id ? '<span class="space-meta">已連結行程</span>' : ''}
-          ${attachment ? `<button type="button" class="attachment-btn" data-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" aria-label="查看「${escapeHtml(r.content)}」的照片">
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3v12H4Z"/><circle cx="12" cy="13" r="3.5"/></svg> 照片
-          </button>` : ''}
-          <span>${fmtDate(r.created_at)}</span>
+        <div class="item-footer">
+          <div class="item-meta">
+            <span class="badge kind-${kind}">${KIND_LABELS[kind] || kind}</span>
+            ${r.space ? `<span class="space-meta">${escapeHtml(r.space)}</span>` : ''}
+            ${r.important === 'Y' ? '<span class="badge important">重要</span>' : ''}
+            ${r.urgent === 'Y' ? '<span class="badge urgent">緊急</span>' : ''}
+            ${tags}
+            ${r.due_date ? `<span class="due-meta">到期 ${fmtDue(r)}</span>` : ''}
+            ${r.calendar_id ? '<span class="space-meta">已連結行程</span>' : ''}
+            ${attachment ? `<button type="button" class="attachment-btn" data-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" aria-label="查看「${escapeHtml(r.content)}」的照片">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h3l1.5-2h7L17 7h3v12H4Z"/><circle cx="12" cy="13" r="3.5"/></svg> 照片
+            </button>` : ''}
+            <span class="created-meta">${fmtDate(r.created_at)}</span>
+          </div>
+          ${kind === 'task' ? `<div class="task-state">${pending ? '<span class="syncing-label" role="status">同步中…</span>' : ''}<select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態" ${pending ? 'disabled' : ''}>${statusOptions}</select></div>` : ''}
         </div>
       </div>
       ${state.batch ? '' : `
@@ -497,8 +500,6 @@ function renderRecordCards(rows) {
             <button type="button" class="menu-delete" data-act="delete">刪除</button>
           </div>
         </details>
-        ${pending ? '<span class="syncing-label" role="status">同步中…</span>' : ''}
-        ${kind === 'task' ? `<select data-act="status" aria-label="變更「${escapeHtml(r.content)}」的狀態" ${pending ? 'disabled' : ''}>${statusOptions}</select>` : ''}
       </div>`}
     </div>`;
   }).join('');
@@ -1194,6 +1195,14 @@ function setActiveView(view) {
   renderList();
 }
 
+function showSearchResults() {
+  $('#records-panel').open = true;
+  renderList();
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+  $('#records-panel').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  setTimeout(() => $('#list').focus?.({ preventScroll: true }), reducedMotion ? 0 : 320);
+}
+
 function syncSpaceButtons() {
   const value = $('#space').value.trim();
   document.querySelectorAll('.space-btn').forEach((button) => {
@@ -1472,7 +1481,7 @@ function renderEquipmentFocus(customer, pair) {
   const machineCount = new Set(matching.map((record) => String(record.machine || '').trim().toLowerCase()).filter(Boolean)).size;
   $('#equipment-focus-eyebrow').textContent = 'CUSTOMER TIMELINE';
   $('#equipment-focus-title').textContent = label;
-  $('#equipment-focus-subtitle').textContent = '設備、記事與行程的完整時間流';
+  $('#equipment-focus-subtitle').textContent = '設備、待辦與行程，關聯資料合併呈現';
   $('#equipment-focus-status').innerHTML = '<span class="equipment-focus-label">客戶全紀錄</span>';
   $('#equipment-focus-count').textContent = `${machineCount} 台設備`;
 }
@@ -1516,6 +1525,23 @@ function showAllEquipment() {
   scrollToEquipmentHistory();
 }
 
+function renderCustomerTimelineItem(item) {
+  if (item.type === 'equipment') {
+    const r = item.data;
+    const status = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring;
+    const attachment = parseAttachments(r.attachments)[0];
+    const deviceValue = escapeHtml(JSON.stringify([r.customer || '', r.machine || '']));
+    const linked = item.linkedRecord;
+    const linkedKind = linked ? (linked.kind || (linked.type === 'todo' ? 'task' : 'note')) : '';
+    const linkedStatus = linkedKind === 'task' ? ` · ${STATUS_LABELS[linked.status] || linked.status || '待處理'}` : '';
+    const linkedMeta = linked ? `<div class="timeline-link-meta"><span>${escapeHtml(KIND_LABELS[linkedKind] || '相關記錄')}${escapeHtml(linkedStatus)}</span><strong>${escapeHtml(linked.content)}</strong>${item.calendar ? `<span>已排行程 · ${escapeHtml(item.calendar.title)} · ${fmtDate(item.calendar.start_time)}</span>` : ''}</div>` : '';
+    return `<article class="customer-timeline-item type-equipment equipment-item" data-id="${escapeHtml(r.id)}"><div class="equipment-item-head"><div><button type="button" class="equipment-entity-link" data-equipment-device="${deviceValue}"><span>設備 · ${escapeHtml(r.machine)}</span></button><strong>${escapeHtml(r.description)}</strong></div><div class="equipment-head-side"><time>${fmtDate(item.date)}</time><div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}${linkedMeta}<div class="item-meta">${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div><button type="button" class="equipment-edit" data-equipment-act="edit">編輯</button></article>`;
+  }
+  if (item.type === 'calendar') return `<article class="customer-timeline-item type-calendar"><div><span>可能相關行程</span><strong>${escapeHtml(item.data.title)}</strong></div><time>${fmtDate(item.date)}</time></article>`;
+  const kind = item.data.kind || (item.data.type === 'todo' ? 'task' : 'note');
+  return `<article class="customer-timeline-item type-record"><div><span>${escapeHtml(KIND_LABELS[kind] || '記錄')}</span><strong>${escapeHtml(item.data.content)}</strong>${item.calendar ? `<div class="timeline-link-meta"><span>已排行程 · ${fmtDate(item.calendar.start_time)}</span><strong>${escapeHtml(item.calendar.title)}</strong></div>` : ''}</div><time>${fmtDate(item.date)}</time></article>`;
+}
+
 function renderCustomerTimeline(customer) {
   renderEquipmentCurrentSummary(customer);
   const keyword = $('#equipment-search').value.trim().toLowerCase();
@@ -1531,27 +1557,46 @@ function renderCustomerTimeline(customer) {
   const customerLabel = state.equipmentRecords.find((record) => customerKey(record.customer) === customer)?.customer || customer;
   renderEquipmentFocus(customer, null);
   const customerText = customerLabel.toLowerCase();
-  const records = statusFilter ? [] : state.records.filter((record) => !linkedRecordIds.has(record.id) && (equipmentIds.has(record.equipment_id) || `${record.content} ${record.tags}`.toLowerCase().includes(customerText)))
+  const eligibleRecords = statusFilter ? [] : state.records
+    .filter((record) => !linkedRecordIds.has(record.id))
     .filter((record) => (!keyword || `${record.content} ${record.tags} ${record.space}`.toLowerCase().includes(keyword)) && timelineDateAllowed(record.created_at));
-  const recordIds = new Set(records.map((record) => record.id));
-  const calendar = statusFilter ? [] : state.calendarSearchRecords.filter((record) => recordIds.has(record.linked_event_id) || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(customerText))
-    .filter((record) => (!keyword || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(keyword)) && timelineDateAllowed(record.start_time));
-  const items = equipment.map((data) => ({ type: 'equipment', date: data.occurred_at || data.created_at, data }))
-    .concat(records.map((data) => ({ type: data.kind || 'note', date: data.created_at, data })), calendar.map((data) => ({ type: 'calendar', date: data.start_time, data })))
+  const explicitRecords = eligibleRecords.filter((record) => equipmentIds.has(record.equipment_id));
+  const explicitRecordIds = new Set(explicitRecords.map((record) => record.id));
+  const possibleRecords = eligibleRecords.filter((record) => !explicitRecordIds.has(record.id) && `${record.content} ${record.tags}`.toLowerCase().includes(customerText));
+  const calendarRows = statusFilter ? [] : state.calendarSearchRecords.filter((record) => timelineDateAllowed(record.start_time));
+  const calendarByRecordId = new Map();
+  calendarRows.forEach((record) => { if (record.linked_event_id && !calendarByRecordId.has(record.linked_event_id)) calendarByRecordId.set(record.linked_event_id, record); });
+  const recordsById = new Map(state.records.map((record) => [record.id, record]));
+  const claimedCalendarIds = new Set();
+  const primaryItems = equipment.map((data) => {
+    const linkedRecord = statusFilter ? null : recordsById.get(data.linked_event_id);
+    const calendar = linkedRecord ? calendarByRecordId.get(linkedRecord.id) : null;
+    if (calendar) claimedCalendarIds.add(calendar.id);
+    return { type: 'equipment', date: data.occurred_at || data.created_at, data, linkedRecord, calendar };
+  }).concat(explicitRecords.map((data) => {
+    const calendar = calendarByRecordId.get(data.id);
+    if (calendar) claimedCalendarIds.add(calendar.id);
+    return { type: data.kind || 'note', date: data.created_at, data, calendar };
+  })).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const possibleItems = possibleRecords.map((data) => {
+    const calendar = calendarByRecordId.get(data.id);
+    if (calendar) claimedCalendarIds.add(calendar.id);
+    return { type: data.kind || 'note', date: data.created_at, data, calendar };
+  }).concat(calendarRows
+    .filter((record) => !claimedCalendarIds.has(record.id) && `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(customerText))
+    .filter((record) => !keyword || `${record.title} ${record.location} ${record.notes}`.toLowerCase().includes(keyword))
+    .map((data) => ({ type: 'calendar', date: data.start_time, data })))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
-  const visibleItems = items.slice(0, state.equipmentVisibleLimit);
-  $('#equipment-timeline-context').textContent = equipmentContextText(customerLabel, items.length, visibleItems.length);
-  setEquipmentPagination(items.length, visibleItems.length);
-  if (!items.length) { $('#equipment-list').innerHTML = '<div class="empty"><strong>沒有符合的客戶紀錄</strong><span>調整設備、狀態或日期範圍。</span></div>'; return; }
-  $('#equipment-list').innerHTML = visibleItems.map((item) => {
-    if (item.type === 'equipment') {
-      const r = item.data; const status = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring; const attachment = parseAttachments(r.attachments)[0];
-      const deviceValue = escapeHtml(JSON.stringify([r.customer || '', r.machine || '']));
-      return `<article class="customer-timeline-item type-equipment equipment-item" data-id="${escapeHtml(r.id)}"><div class="equipment-item-head"><div><button type="button" class="equipment-entity-link" data-equipment-device="${deviceValue}"><span>設備 · ${escapeHtml(r.machine)}</span></button><strong>${escapeHtml(r.description)}</strong></div><div class="equipment-head-side"><time>${fmtDate(item.date)}</time><div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}<div class="item-meta">${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div><button type="button" class="equipment-edit" data-equipment-act="edit">編輯</button></article>`;
-    }
-    if (item.type === 'calendar') return `<article class="customer-timeline-item type-calendar"><div><span>行程</span><strong>${escapeHtml(item.data.title)}</strong></div><time>${fmtDate(item.date)}</time></article>`;
-    return `<article class="customer-timeline-item type-record"><div><span>${escapeHtml(KIND_LABELS[item.type] || '記錄')}</span><strong>${escapeHtml(item.data.content)}</strong></div><time>${fmtDate(item.date)}</time></article>`;
-  }).join('');
+  const total = primaryItems.length + possibleItems.length;
+  const visiblePrimary = primaryItems.slice(0, state.equipmentVisibleLimit);
+  const visiblePossible = possibleItems;
+  const visible = visiblePrimary.length + visiblePossible.length;
+  $('#equipment-timeline-context').textContent = equipmentContextText(customerLabel, total, visible);
+  setEquipmentPagination(total, visible);
+  if (!total) { $('#equipment-list').innerHTML = '<div class="empty"><strong>沒有符合的客戶紀錄</strong><span>調整設備、狀態或日期範圍。</span></div>'; return; }
+  const primaryHtml = visiblePrimary.map(renderCustomerTimelineItem).join('');
+  const possibleHtml = visiblePossible.length ? `<details class="timeline-related"><summary>可能相關 <span>名稱出現在內容中 · ${visiblePossible.length} 筆</span></summary><div class="timeline-related-list">${visiblePossible.map(renderCustomerTimelineItem).join('')}</div></details>` : '';
+  $('#equipment-list').innerHTML = primaryHtml + possibleHtml;
 }
 
 function renderEquipmentList() {
@@ -2102,7 +2147,6 @@ function switchScreen(screen, updateHash = true) {
   const startedAt = perfNow();
   const nextScreen = ['notebook', 'equipment', 'calendar'].includes(screen) ? screen : 'records';
   if (state.activeScreen === 'calendar' && nextScreen !== 'calendar') calendarLoadGeneration += 1;
-  state.screenScroll[state.activeScreen] = window.scrollY || 0;
   state.activeScreen = nextScreen;
   if (document.body?.dataset) document.body.dataset.screen = state.activeScreen;
   $('#records-screen').hidden = state.activeScreen !== 'records';
@@ -2125,8 +2169,8 @@ function switchScreen(screen, updateHash = true) {
     renderMonthCalendar();
     if (getSecret()) loadCalendar();
   }
-  const restoreScroll = () => window.scrollTo({ top: state.screenScroll[state.activeScreen] || 0, behavior: 'instant' });
-  if (window.requestAnimationFrame) window.requestAnimationFrame(restoreScroll); else restoreScroll();
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'instant' });
+  if (window.requestAnimationFrame) window.requestAnimationFrame(scrollToTop); else scrollToTop();
   perfRecord(`切換畫面 ${state.activeScreen}`, startedAt);
 }
 
@@ -2211,6 +2255,9 @@ function init() {
   $('#btn-batch-exit').addEventListener('click', () => setBatch(false));
 
   $('#search').addEventListener('input', () => { if ($('#search').value.trim()) { $('#records-panel').open = true; ensureCalendarSearchRecords(); } renderList(); });
+  $('#search').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); showSearchResults(); } });
+  $('#search').addEventListener('search', showSearchResults);
+  $('#btn-show-search-results').addEventListener('click', showSearchResults);
   $('#filter-space').addEventListener('change', renderList);
   $('#filter-status').addEventListener('change', renderList);
   $('#tag-chips').addEventListener('click', (e) => {
