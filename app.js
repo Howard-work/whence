@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.1.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -352,6 +352,12 @@ let toastTimer;
 function toast(msg, withNote = true) {
   const el = $('#toast');
   const note = withNote ? toastNoteFor(msg) : '';
+  const message = String(msg || '');
+  el.dataset.tone = /失敗|錯誤|無法|不可/.test(message)
+    ? 'error'
+    : /成功|已完成|已儲存|已更新|已建立|已復原|連線成功/.test(message)
+      ? 'success'
+      : 'info';
   el.textContent = note ? `${msg} · ${note}` : msg;
   el.hidden = false;
   clearTimeout(toastTimer);
@@ -1994,6 +2000,7 @@ function switchScreen(screen, updateHash = true) {
   if (state.activeScreen === 'calendar' && nextScreen !== 'calendar') calendarLoadGeneration += 1;
   state.screenScroll[state.activeScreen] = window.scrollY || 0;
   state.activeScreen = nextScreen;
+  if (document.body?.dataset) document.body.dataset.screen = state.activeScreen;
   $('#records-screen').hidden = state.activeScreen !== 'records';
   $('#notebook-screen').hidden = state.activeScreen !== 'notebook';
   $('#equipment-screen').hidden = state.activeScreen !== 'equipment';
@@ -2205,7 +2212,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.0.2').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.1.0').catch(() => {});
   }
 
   resetCalendarForm();
