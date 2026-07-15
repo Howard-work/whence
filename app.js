@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '0.10.0';
+const APP_VERSION = '0.10.1';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1475,9 +1475,39 @@ async function openTaskInCalendar(id) {
   else toast('找不到已連結行程，請重新整理後再試');
 }
 
-/** 對帳節流（v0.9.1）：同一個月份視窗 10 分鐘內只對 Google 日曆對帳一次；手動重新整理可強制 */
+/** 同月份視窗一分鐘內只對帳一次；App 回到前景時也會自動檢查。 */
 const reconcileDoneAt = new Map();
-const RECONCILE_TTL = 10 * 60 * 1000;
+const RECONCILE_TTL = 60 * 1000;
+
+function currentCalendarWindow() {
+  const start = new Date(state.calendarCursor); start.setDate(start.getDate() - 7);
+  const end = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 2, 8);
+  return { start, end };
+}
+
+async function reconcileCurrentCalendar(force = false) {
+  const { start, end } = currentCalendarWindow();
+  const reconcileKey = `${state.calendarCursor.getFullYear()}-${state.calendarCursor.getMonth()}`;
+  if (!force && Date.now() - (reconcileDoneAt.get(reconcileKey) || 0) <= RECONCILE_TTL) return { start, end, skipped: true };
+  await apiPost('calendar_reconcile', { start: start.toISOString(), end: end.toISOString() });
+  reconcileDoneAt.set(reconcileKey, Date.now());
+  return { start, end, skipped: false };
+}
+
+let calendarResumeSyncPromise = null;
+function syncCalendarOnResume(event) {
+  if (event?.type === 'pageshow' && !event.persisted) return;
+  if ((document.visibilityState && document.visibilityState !== 'visible') || !getSecret() || calendarResumeSyncPromise) return;
+  calendarResumeSyncPromise = reconcileCurrentCalendar(false)
+    .then((result) => {
+      if (result.skipped) return null;
+      if (state.activeScreen === 'calendar') return loadCalendar();
+      if (state.activeScreen === 'equipment') return loadEquipment();
+      return loadList();
+    })
+    .catch((err) => toast(`日曆同步失敗：${err.message}`))
+    .finally(() => { calendarResumeSyncPromise = null; });
+}
 
 async function loadCalendar(forceReconcile = false) {
   const startedAt = perfNow();
@@ -1485,13 +1515,7 @@ async function loadCalendar(forceReconcile = false) {
   $('#calendar-list').setAttribute('aria-busy', 'true');
   try {
     if (!state.records.length) state.records = await fetchAllRecords();
-    const start = new Date(state.calendarCursor); start.setDate(start.getDate() - 7);
-    const end = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 2, 8);
-    const reconcileKey = `${state.calendarCursor.getFullYear()}-${state.calendarCursor.getMonth()}`;
-    if (forceReconcile || Date.now() - (reconcileDoneAt.get(reconcileKey) || 0) > RECONCILE_TTL) {
-      await apiPost('calendar_reconcile', { start: start.toISOString(), end: end.toISOString() });
-      reconcileDoneAt.set(reconcileKey, Date.now());
-    }
+    const { start, end } = await reconcileCurrentCalendar(forceReconcile);
     if (!state.calendarRepairDone) {
       await apiPost('task_calendar_repair');
       state.calendarRepairDone = true;
@@ -1726,6 +1750,8 @@ function init() {
   window.visualViewport?.addEventListener('scroll', syncVisualViewport);
   window.addEventListener?.('resize', syncVisualViewport);
   document.addEventListener('focusin', keepFocusedControlVisible);
+  document.addEventListener('visibilitychange', syncCalendarOnResume);
+  window.addEventListener?.('pageshow', syncCalendarOnResume);
   setActiveKind(KIND_LABELS[state.activeKind] ? state.activeKind : 'note');
   $('#space').value = localStorage.getItem('whence_last_space') || '';
   syncSpaceButtons();
@@ -1903,7 +1929,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=0.10.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=0.10.1').catch(() => {});
   }
 
   resetCalendarForm();
