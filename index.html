@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=1.1.0-r4">
+  <link rel="stylesheet" href="./style.css?v=1.1.0-r5">
 </head>
 <body data-screen="records">
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -192,6 +192,15 @@
       <details id="equipment-history-panel" class="collapsible-section" open>
         <summary><span><small>HISTORY</small><strong id="equipment-history-title">設備歷史</strong></span></summary>
         <div class="collapsible-body">
+      <section id="equipment-focus" class="equipment-focus" aria-labelledby="equipment-focus-title" hidden>
+        <div class="equipment-focus-heading">
+          <div><p id="equipment-focus-eyebrow" class="eyebrow"></p><h3 id="equipment-focus-title"></h3><p id="equipment-focus-subtitle"></p></div>
+          <button type="button" id="btn-equipment-all" class="secondary-btn equipment-back" aria-label="返回全部設備">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg><span>全部設備</span>
+          </button>
+        </div>
+        <div class="equipment-focus-meta"><div id="equipment-focus-status"></div><span id="equipment-focus-count"></span></div>
+      </section>
       <details id="equipment-search-panel" class="equipment-search-panel">
         <summary><span>搜尋與篩選</span><small id="equipment-filter-state">需要時再展開</small></summary>
       <section class="filter-bar" aria-label="搜尋與篩選設備歷史">
@@ -208,6 +217,7 @@
       <p id="equipment-timeline-context" class="timeline-context"></p>
       <section id="equipment-current-summary" class="equipment-current-summary" hidden></section>
       <section id="equipment-list" aria-busy="false"></section>
+      <button type="button" id="btn-equipment-more" class="secondary-btn equipment-more" hidden>顯示更多</button>
         </div>
       </details>
       <section class="card equipment-capture" aria-labelledby="equipment-capture-title">
@@ -443,6 +453,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=1.1.0-r4"></script>
+  <script src="./app.js?v=1.1.0-r5"></script>
 </body>
 </html>

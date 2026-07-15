@@ -45,6 +45,7 @@ const EQUIPMENT_STATUS = {
   waiting_vendor: { label: '等原廠', tone: 'vendor' }, recurring: { label: '持續發生', tone: 'recurring' },
   paused: { label: '暫停處理', tone: 'paused' }, active: { label: '持續發生', tone: 'recurring' },
 };
+const EQUIPMENT_PAGE_SIZE = 20;
 
 // ===== 狀態（資料真相在 Sheets，此處僅為視圖快取）=====
 const state = {
@@ -71,6 +72,7 @@ const state = {
   equipmentRecords: [],
   equipmentAttachment: null,
   equipmentPhotoBusy: false,
+  equipmentVisibleLimit: EQUIPMENT_PAGE_SIZE,
   activeScreen: 'records',
   notebookSpace: '',
   notebookTag: '',
@@ -1437,6 +1439,83 @@ function timelineDateAllowed(value) {
   return time >= from && time <= to;
 }
 
+function resetEquipmentVisibleLimit() { state.equipmentVisibleLimit = EQUIPMENT_PAGE_SIZE; }
+
+function setEquipmentPagination(total, visible) {
+  const button = $('#btn-equipment-more');
+  const remaining = Math.max(0, total - visible);
+  button.hidden = remaining === 0;
+  button.textContent = remaining ? `顯示更多（尚有 ${remaining} 筆）` : '顯示更多';
+}
+
+function equipmentContextText(label, total, visible) {
+  return `${label ? `${label} · ` : ''}已顯示 ${visible}／共 ${total} 筆`;
+}
+
+function renderEquipmentFocus(customer, pair) {
+  const focus = $('#equipment-focus');
+  if (!customer && !pair) { focus.hidden = true; return; }
+  focus.hidden = false;
+  if (pair) {
+    const allRows = state.equipmentRecords.filter((record) => record.customer === pair[0] && record.machine === pair[1]);
+    const latest = [...allRows].sort((a, b) => new Date(b.occurred_at || b.created_at) - new Date(a.occurred_at || a.created_at))[0];
+    const status = latest ? (EQUIPMENT_STATUS[latest.status] || EQUIPMENT_STATUS.recurring) : null;
+    $('#equipment-focus-eyebrow').textContent = 'DEVICE TIMELINE';
+    $('#equipment-focus-title').textContent = pair[1];
+    $('#equipment-focus-subtitle').textContent = pair[0] || '未指定客戶';
+    $('#equipment-focus-status').innerHTML = status ? `<div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div>` : '';
+    $('#equipment-focus-count').textContent = `${allRows.length} 筆設備紀錄`;
+    return;
+  }
+  const matching = state.equipmentRecords.filter((record) => customerKey(record.customer) === customer);
+  const label = matching[0]?.customer || customer;
+  const machineCount = new Set(matching.map((record) => String(record.machine || '').trim().toLowerCase()).filter(Boolean)).size;
+  $('#equipment-focus-eyebrow').textContent = 'CUSTOMER TIMELINE';
+  $('#equipment-focus-title').textContent = label;
+  $('#equipment-focus-subtitle').textContent = '設備、記事與行程的完整時間流';
+  $('#equipment-focus-status').innerHTML = '<span class="equipment-focus-label">客戶全紀錄</span>';
+  $('#equipment-focus-count').textContent = `${machineCount} 台設備`;
+}
+
+function scrollToEquipmentHistory() {
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+  $('#equipment-history-panel').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+}
+
+function openEquipmentCustomerTimeline(label) {
+  $('#equipment-customer-filter').value = customerKey(label);
+  renderEquipmentMachineFilter();
+  $('#equipment-machine-filter').value = '';
+  resetEquipmentVisibleLimit();
+  renderEquipmentList();
+  scrollToEquipmentHistory();
+}
+
+function openEquipmentDeviceTimeline(value) {
+  let pair = null;
+  try { pair = JSON.parse(value); } catch (_) { pair = null; }
+  if (!pair?.[1]) return;
+  $('#equipment-customer-filter').value = '';
+  renderEquipmentMachineFilter();
+  $('#equipment-machine-filter').value = JSON.stringify(pair);
+  resetEquipmentVisibleLimit();
+  renderEquipmentList();
+  scrollToEquipmentHistory();
+}
+
+function showAllEquipment() {
+  $('#equipment-search').value = '';
+  $('#equipment-customer-filter').value = '';
+  renderEquipmentMachineFilter();
+  $('#equipment-machine-filter').value = '';
+  $('#equipment-status-filter').value = '';
+  $('#equipment-date-from').value = '';
+  $('#equipment-date-to').value = '';
+  resetEquipmentVisibleLimit();
+  renderEquipmentList();
+  scrollToEquipmentHistory();
+}
+
 function renderCustomerTimeline(customer) {
   renderEquipmentCurrentSummary(customer);
   const keyword = $('#equipment-search').value.trim().toLowerCase();
@@ -1450,6 +1529,7 @@ function renderCustomerTimeline(customer) {
   const equipmentIds = new Set(equipment.map((record) => record.id));
   const linkedRecordIds = new Set(equipment.map((record) => record.linked_event_id).filter(Boolean));
   const customerLabel = state.equipmentRecords.find((record) => customerKey(record.customer) === customer)?.customer || customer;
+  renderEquipmentFocus(customer, null);
   const customerText = customerLabel.toLowerCase();
   const records = statusFilter ? [] : state.records.filter((record) => !linkedRecordIds.has(record.id) && (equipmentIds.has(record.equipment_id) || `${record.content} ${record.tags}`.toLowerCase().includes(customerText)))
     .filter((record) => (!keyword || `${record.content} ${record.tags} ${record.space}`.toLowerCase().includes(keyword)) && timelineDateAllowed(record.created_at));
@@ -1459,12 +1539,15 @@ function renderCustomerTimeline(customer) {
   const items = equipment.map((data) => ({ type: 'equipment', date: data.occurred_at || data.created_at, data }))
     .concat(records.map((data) => ({ type: data.kind || 'note', date: data.created_at, data })), calendar.map((data) => ({ type: 'calendar', date: data.start_time, data })))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
-  $('#equipment-timeline-context').textContent = `${customerLabel} · ${items.length} 筆相關紀錄`;
+  const visibleItems = items.slice(0, state.equipmentVisibleLimit);
+  $('#equipment-timeline-context').textContent = equipmentContextText(customerLabel, items.length, visibleItems.length);
+  setEquipmentPagination(items.length, visibleItems.length);
   if (!items.length) { $('#equipment-list').innerHTML = '<div class="empty"><strong>沒有符合的客戶紀錄</strong><span>調整設備、狀態或日期範圍。</span></div>'; return; }
-  $('#equipment-list').innerHTML = items.map((item) => {
+  $('#equipment-list').innerHTML = visibleItems.map((item) => {
     if (item.type === 'equipment') {
       const r = item.data; const status = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring; const attachment = parseAttachments(r.attachments)[0];
-      return `<article class="customer-timeline-item type-equipment equipment-item" data-id="${escapeHtml(r.id)}"><div class="equipment-item-head"><div><span>設備 · ${escapeHtml(r.machine)}</span><strong>${escapeHtml(r.description)}</strong></div><div class="equipment-head-side"><time>${fmtDate(item.date)}</time><div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}<div class="item-meta">${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div><button type="button" class="equipment-edit" data-equipment-act="edit">編輯</button></article>`;
+      const deviceValue = escapeHtml(JSON.stringify([r.customer || '', r.machine || '']));
+      return `<article class="customer-timeline-item type-equipment equipment-item" data-id="${escapeHtml(r.id)}"><div class="equipment-item-head"><div><button type="button" class="equipment-entity-link" data-equipment-device="${deviceValue}"><span>設備 · ${escapeHtml(r.machine)}</span></button><strong>${escapeHtml(r.description)}</strong></div><div class="equipment-head-side"><time>${fmtDate(item.date)}</time><div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}<div class="item-meta">${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div><button type="button" class="equipment-edit" data-equipment-act="edit">編輯</button></article>`;
     }
     if (item.type === 'calendar') return `<article class="customer-timeline-item type-calendar"><div><span>行程</span><strong>${escapeHtml(item.data.title)}</strong></div><time>${fmtDate(item.date)}</time></article>`;
     return `<article class="customer-timeline-item type-record"><div><span>${escapeHtml(KIND_LABELS[item.type] || '記錄')}</span><strong>${escapeHtml(item.data.content)}</strong></div><time>${fmtDate(item.date)}</time></article>`;
@@ -1483,26 +1566,32 @@ function renderEquipmentList() {
   $('#equipment-search-panel').dataset.active = String(activeFilterCount > 0);
   $('#equipment-filter-state').textContent = activeFilterCount ? `已套用 ${activeFilterCount} 項` : '需要時再展開';
   const customer = $('#equipment-customer-filter').value;
-  $('#btn-customer-alias').hidden = !customer;
-  if (customer) { renderCustomerTimeline(customer); return; }
-  $('#equipment-current-summary').hidden = true;
-  const keyword = $('#equipment-search').value.trim().toLowerCase();
-  const statusFilter = $('#equipment-status-filter').value;
   const machineFilter = $('#equipment-machine-filter').value;
   let pair = null;
   try { pair = machineFilter ? JSON.parse(machineFilter) : null; } catch (_) { pair = null; }
+  $('#btn-customer-alias').hidden = !customer;
+  if (customer && !pair) { renderCustomerTimeline(customer); return; }
+  $('#equipment-current-summary').hidden = true;
+  renderEquipmentFocus('', pair);
+  const keyword = $('#equipment-search').value.trim().toLowerCase();
+  const statusFilter = $('#equipment-status-filter').value;
   const rows = state.equipmentRecords.filter((r) => (!pair || (r.customer === pair[0] && r.machine === pair[1])) && (!statusFilter || r.status === statusFilter || (r.status === 'active' && statusFilter === 'recurring')) && equipmentMatchesKeyword(r, keyword) && timelineDateAllowed(r.occurred_at || r.created_at));
-  $('#equipment-timeline-context').textContent = `${pair ? `${pair[0] ? `${pair[0]} · ` : ''}${pair[1]} · ` : ''}${rows.length} 筆設備紀錄`;
+  const visibleRows = rows.slice(0, state.equipmentVisibleLimit);
+  const contextLabel = pair ? `${pair[0] ? `${pair[0]} · ` : ''}${pair[1]}` : '';
+  $('#equipment-timeline-context').textContent = equipmentContextText(contextLabel, rows.length, visibleRows.length);
+  setEquipmentPagination(rows.length, visibleRows.length);
   if (!rows.length) {
     $('#equipment-list').innerHTML = `<div class="empty"><strong>還沒有設備紀錄</strong><span>${emptyNote('equipment')}</span></div>`;
     return;
   }
-  $('#equipment-list').innerHTML = rows.map((r) => {
+  $('#equipment-list').innerHTML = visibleRows.map((r) => {
     const attachment = parseAttachments(r.attachments)[0];
     const equipmentStatus = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring;
     const tags = String(r.tags || '').split(',').filter(Boolean).map((tag) => `<span class="item-tag">#${escapeHtml(tag)}</span>`).join(' ');
+    const customerButton = r.customer ? `<button type="button" class="equipment-entity-link" data-equipment-customer="${escapeHtml(r.customer)}"><strong>${escapeHtml(r.customer)}</strong></button>` : '';
+    const deviceButton = r.machine ? `<button type="button" class="equipment-entity-link" data-equipment-device="${escapeHtml(JSON.stringify([r.customer || '', r.machine]))}"><span>${escapeHtml(r.machine)}</span></button>` : '';
     return `<article class="equipment-item" data-id="${escapeHtml(r.id)}">
-      <div class="equipment-item-head"><div><strong>${escapeHtml(r.customer || r.machine)}</strong>${r.customer && r.machine ? `<span>${escapeHtml(r.machine)}</span>` : ''}</div><div class="equipment-head-side"><time>${fmtDate(r.occurred_at || r.created_at)}</time><div class="equipment-status-badge status-${equipmentStatus.tone}"><span aria-hidden="true"></span>${equipmentStatus.label}</div></div></div>
+      <div class="equipment-item-head"><div class="equipment-entity-links">${customerButton}${deviceButton}</div><div class="equipment-head-side"><time>${fmtDate(r.occurred_at || r.created_at)}</time><div class="equipment-status-badge status-${equipmentStatus.tone}"><span aria-hidden="true"></span>${equipmentStatus.label}</div></div></div>
       <p>${escapeHtml(r.description)}</p>
       ${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}
       <div class="item-meta">${tags}${r.linked_event_id ? '<span class="space-meta">已關聯記錄</span>' : ''}${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div>
@@ -2160,13 +2249,15 @@ function init() {
     button.addEventListener('click', () => switchScreen(button.dataset.screen)));
   $('#equipment-photo-input').addEventListener('change', handleEquipmentPhoto);
   $('#btn-save-equipment').addEventListener('click', saveEquipment);
-  $('#equipment-search').addEventListener('input', () => { renderEquipmentMachineFilter(); renderEquipmentList(); });
-  $('#equipment-machine-filter').addEventListener('change', renderEquipmentList);
-  $('#equipment-customer-filter').addEventListener('change', () => { renderEquipmentMachineFilter(); renderEquipmentList(); });
+  $('#equipment-search').addEventListener('input', () => { resetEquipmentVisibleLimit(); renderEquipmentMachineFilter(); renderEquipmentList(); });
+  $('#equipment-machine-filter').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
+  $('#equipment-customer-filter').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentMachineFilter(); renderEquipmentList(); });
   $('#btn-customer-alias').addEventListener('click', mergeSelectedCustomer);
-  $('#equipment-status-filter').addEventListener('change', renderEquipmentList);
-  $('#equipment-date-from').addEventListener('change', renderEquipmentList);
-  $('#equipment-date-to').addEventListener('change', renderEquipmentList);
+  $('#equipment-status-filter').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
+  $('#equipment-date-from').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
+  $('#equipment-date-to').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
+  $('#btn-equipment-more').addEventListener('click', () => { state.equipmentVisibleLimit += EQUIPMENT_PAGE_SIZE; renderEquipmentList(); });
+  $('#btn-equipment-all').addEventListener('click', showAllEquipment);
   $('#equipment-customer').addEventListener('input', renderEquipmentFormMachineSuggestions);
   $('#equipment-linked-kind').addEventListener('change', () => {
     const kind = $('#equipment-linked-kind').value;
@@ -2181,6 +2272,10 @@ function init() {
   $('#btn-remove-equipment-edit-photo').addEventListener('click', () => { state.equipmentEditAttachment = null; state.equipmentEditRemoveAttachment = state.equipmentEditHadAttachment; renderEquipmentEditPhoto(); });
   $('#equipment-edit-modal').addEventListener('click', (event) => { if (event.target === $('#equipment-edit-modal')) closeEquipmentEdit(); });
   $('#equipment-list').addEventListener('click', (event) => {
+    const customerLink = event.target.closest('[data-equipment-customer]');
+    if (customerLink) { openEquipmentCustomerTimeline(customerLink.dataset.equipmentCustomer); return; }
+    const deviceLink = event.target.closest('[data-equipment-device]');
+    if (deviceLink) { openEquipmentDeviceTimeline(deviceLink.dataset.equipmentDevice); return; }
     const control = event.target.closest('[data-equipment-act]');
     if (!control) return;
     const item = control.closest('.equipment-item');

@@ -694,6 +694,22 @@ textarea {
 .equipment-search-panel[data-active="true"] > summary small { color: var(--equipment); }
 .equipment-search-panel[open] > summary { border-bottom: 1px solid var(--border-soft); }
 .equipment-search-panel > .filter-bar { padding: 14px; }
+.equipment-focus { margin: 0 0 16px; padding: 16px; border: 1px solid rgba(149, 212, 123, .42); border-radius: var(--radius-lg); background: linear-gradient(145deg, rgba(149, 212, 123, .1), rgba(19, 26, 42, .76)); }
+.equipment-focus-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.equipment-focus-heading .eyebrow { color: var(--equipment); }
+.equipment-focus-heading h3 { margin: 3px 0 0; font-family: "Songti TC", "Noto Serif TC", "PMingLiU", serif; font-size: clamp(22px, 6vw, 30px); letter-spacing: .035em; }
+.equipment-focus-heading p:last-child { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.equipment-back { min-height: 44px; flex: 0 0 auto; }
+.equipment-back svg { width: 16px; height: 16px; margin-right: 4px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+.equipment-focus-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+.equipment-focus-meta > span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.equipment-focus-label { color: var(--equipment); font-size: 12px; font-weight: 750; letter-spacing: .05em; }
+.equipment-entity-links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.equipment-entity-link { display: inline-flex; align-items: center; width: auto; min-height: 44px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.equipment-entity-link strong, .equipment-entity-link span { display: block; }
+.equipment-entity-link:hover { color: var(--equipment); }
+.equipment-entity-link:active { opacity: .78; }
+.equipment-more { display: block; width: min(100%, 280px); min-height: 48px; margin: 16px auto 2px; }
 
 .equipment-item {
   position: relative;
@@ -1355,6 +1371,9 @@ body.keyboard-open .modal-body {
   .screen-intro-copy { font-size: 13px; }
   .screen-intro-records { align-items: flex-end; }
   .screen-intro-equipment { align-items: flex-end; }
+  .equipment-focus-heading { align-items: flex-start; }
+  .equipment-back { width: 44px; min-width: 44px; padding-inline: 0; }
+  .equipment-back span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .intro-action { min-width: 48px; width: 48px; padding: 0; }
   .intro-action span { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .today-overview { padding: 20px 16px 16px; }
