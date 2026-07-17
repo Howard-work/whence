@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=1.1.0-r8">
+  <link rel="stylesheet" href="./style.css?v=1.1.0-r15">
 </head>
 <body data-screen="records">
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -189,15 +189,24 @@
 
     <section id="equipment-screen" class="app-screen" aria-labelledby="equipment-title" hidden>
       <section class="screen-intro screen-intro-equipment">
-        <div><p class="eyebrow">EQUIPMENT</p><h2 id="equipment-title">設備</h2><p class="screen-intro-copy">故障、處置與等待中的事，都沿著同一條時間線留下來。</p></div>
+        <div><p class="eyebrow">EQUIPMENT</p><h2 id="equipment-title">設備</h2><p class="screen-intro-copy">先看哪些設備需要處理，再進入單一設備查看完整脈絡。</p></div>
         <button type="button" id="btn-jump-equipment-capture" class="intro-action" aria-label="前往新增設備紀錄">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           <span>新增紀錄</span>
         </button>
       </section>
       <details id="equipment-history-panel" class="collapsible-section" open>
-        <summary><span><small>HISTORY</small><strong id="equipment-history-title">設備歷史</strong></span></summary>
+        <summary><span><small>WORKSPACE</small><strong id="equipment-history-title">設備工作台</strong></span></summary>
         <div class="collapsible-body">
+      <div id="equipment-view-switch" class="equipment-view-switch" role="group" aria-label="設備檢視方式">
+        <button type="button" class="equipment-view-btn active" data-equipment-view="inbox" aria-pressed="true">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 14h5l2 2h2l2-2h5"/></svg><span>待處理</span><small id="equipment-inbox-count">0</small>
+        </button>
+        <button type="button" class="equipment-view-btn" data-equipment-view="devices" aria-pressed="false">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>全部設備</span><small id="equipment-device-count">0</small>
+        </button>
+      </div>
+      <section id="equipment-overview" class="equipment-overview" aria-label="設備狀態摘要"></section>
       <section id="equipment-focus" class="equipment-focus" aria-labelledby="equipment-focus-title" hidden>
         <div class="equipment-focus-heading">
           <div><p id="equipment-focus-eyebrow" class="eyebrow"></p><h3 id="equipment-focus-title"></h3><p id="equipment-focus-subtitle"></p></div>
@@ -206,18 +215,25 @@
           </button>
         </div>
         <div class="equipment-focus-meta"><div id="equipment-focus-status"></div><span id="equipment-focus-count"></span></div>
+        <section id="equipment-case-switcher" class="equipment-case-switcher" aria-label="設備案件" hidden></section>
+        <button type="button" id="btn-equipment-append" class="equipment-append" hidden>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>追加處理進度</span>
+        </button>
       </section>
       <details id="equipment-search-panel" class="equipment-search-panel">
         <summary><span>搜尋與篩選</span><small id="equipment-filter-state">需要時再展開</small></summary>
       <section class="filter-bar" aria-label="搜尋與篩選設備歷史">
         <label class="sr-only" for="equipment-search">搜尋設備紀錄</label>
         <input id="equipment-search" type="search" placeholder="搜尋客戶、設備、狀態、內容或標籤…">
-        <label class="field-label" for="equipment-customer-filter">客戶時間軸</label>
+        <label class="field-label" for="equipment-customer-filter">客戶</label>
         <select id="equipment-customer-filter"><option value="">全部客戶</option></select>
         <button type="button" id="btn-customer-alias" class="secondary-btn" hidden>合併客戶名稱</button>
         <label class="field-label" for="equipment-machine-filter">設備篩選</label>
         <select id="equipment-machine-filter"><option value="">全部設備</option></select>
         <details class="equipment-filter-details"><summary>進階篩選 <span>狀態／日期</span></summary><p class="filter-help">日期可留空；填寫後只顯示該期間內的歷史紀錄。</p><div class="equipment-timeline-filters"><div><label class="field-label" for="equipment-status-filter">設備狀態</label><select id="equipment-status-filter"><option value="">全部狀態</option><option value="resolved">已解決</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="recurring">持續發生</option><option value="paused">暫停處理</option></select></div><div><label class="field-label" for="equipment-date-from">開始日期</label><input id="equipment-date-from" type="date"></div><div><label class="field-label" for="equipment-date-to">結束日期</label><input id="equipment-date-to" type="date"></div></div></details>
+        <button type="button" id="btn-equipment-export" class="equipment-export">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg><span>匯出目前設備資料 CSV</span>
+        </button>
       </section>
       </details>
       <p id="equipment-timeline-context" class="timeline-context"></p>
@@ -228,8 +244,8 @@
       </details>
       <section class="card equipment-capture" aria-labelledby="equipment-capture-title">
         <div class="section-heading">
-          <div><p class="eyebrow">NEW ENTRY</p><h2 id="equipment-capture-title">新增設備紀錄</h2></div>
-          <span class="section-hint">留下發生過什麼</span>
+          <div><p class="eyebrow">UPDATE</p><h2 id="equipment-capture-title">新增設備進度</h2></div>
+          <span id="equipment-capture-hint" class="section-hint">建立新問題或補上處理進度</span>
         </div>
         <label class="field-label" for="equipment-customer">客戶／地點 <span>選填</span></label>
         <input id="equipment-customer" type="text" list="equipment-customer-suggestions" autocomplete="off" placeholder="例如：中壢 A 廠">
@@ -243,6 +259,20 @@
         <textarea id="equipment-action" rows="2" placeholder="例如：清潔感測器後恢復"></textarea>
         <label class="field-label" for="equipment-status">目前狀態</label>
         <select id="equipment-status"><option value="recurring">持續發生</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="resolved">已解決</option><option value="paused">暫停處理</option></select>
+        <details class="equipment-progress-options">
+          <summary>案件與報告欄位 <span>追蹤、嚴重度、結案資料</span></summary>
+          <div class="equipment-progress-grid">
+            <div><label class="field-label" for="equipment-event-type">本次進度</label><select id="equipment-event-type"><option value="issue">發現問題</option><option value="progress">處理進度</option><option value="diagnosis">診斷</option><option value="repair">維修處置</option><option value="test">測試確認</option><option value="customer_update">客戶回報</option><option value="closure">結案</option></select></div>
+            <div><label class="field-label" for="equipment-severity">嚴重度</label><select id="equipment-severity"><option value="">未指定</option><option value="low">低</option><option value="normal">一般</option><option value="high">高</option><option value="critical">重大</option></select></div>
+            <div><label class="field-label" for="equipment-follow-up">下次追蹤 <span>選填</span></label><input id="equipment-follow-up" type="datetime-local"></div>
+            <div><label class="field-label" for="equipment-technician">處理人員 <span>選填</span></label><input id="equipment-technician" type="text" autocomplete="name"></div>
+          </div>
+          <div id="equipment-resolution-fields" class="equipment-resolution-fields" hidden>
+            <label class="field-label" for="equipment-root-cause">根本原因 <span>選填</span></label><textarea id="equipment-root-cause" rows="2"></textarea>
+            <label class="field-label" for="equipment-resolution-summary">結案摘要 <span>選填</span></label><textarea id="equipment-resolution-summary" rows="2"></textarea>
+            <label class="field-label" for="equipment-downtime">停機分鐘 <span>選填</span></label><input id="equipment-downtime" type="number" min="0" inputmode="numeric">
+          </div>
+        </details>
         <label class="field-label" for="equipment-tags">標籤 <span>選填</span></label>
         <input id="equipment-tags" type="text" autocomplete="off" placeholder="例如：UV、感測器">
         <label class="field-label" for="equipment-occurred">發生時間</label>
@@ -264,7 +294,7 @@
           <label class="photo-picker" for="equipment-photo-input">拍照或選取照片</label>
           <span id="equipment-photo-status" class="photo-help"></span>
         </div>
-        <button type="button" id="btn-save-equipment" class="save-btn">儲存設備紀錄</button>
+        <button type="button" id="btn-save-equipment" class="save-btn">儲存設備進度</button>
       </section>
     </section>
     <section id="calendar-screen" class="app-screen" aria-labelledby="calendar-screen-title" hidden>
@@ -459,6 +489,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=1.1.0-r8"></script>
+  <script src="./app.js?v=1.1.0-r15"></script>
 </body>
 </html>

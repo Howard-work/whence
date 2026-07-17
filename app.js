@@ -45,13 +45,17 @@ const EQUIPMENT_STATUS = {
   waiting_vendor: { label: '等原廠', tone: 'vendor' }, recurring: { label: '持續發生', tone: 'recurring' },
   paused: { label: '暫停處理', tone: 'paused' }, active: { label: '持續發生', tone: 'recurring' },
 };
+const EQUIPMENT_EVENT_LABELS = { issue: '發現問題', progress: '處理進度', diagnosis: '診斷', repair: '維修處置', test: '測試確認', customer_update: '客戶回報', closure: '結案' };
+const EQUIPMENT_SEVERITY_LABELS = { low: '低', normal: '一般', high: '高', critical: '重大' };
 const EQUIPMENT_PAGE_SIZE = 20;
+let equipmentSearchTimer = null;
 
 // ===== 狀態（資料真相在 Sheets，此處僅為視圖快取）=====
 const state = {
   records: [],
   activeKind: localStorage.getItem('whence_last_kind') || 'note',
   activeView: 'today',
+  taskQuadrant: '',
   important: false,
   urgent: false,
   filterTag: '',
@@ -73,6 +77,13 @@ const state = {
   equipmentAttachment: null,
   equipmentPhotoBusy: false,
   equipmentVisibleLimit: EQUIPMENT_PAGE_SIZE,
+  equipmentView: 'inbox',
+  equipmentFocusedRecords: [],
+  equipmentFocusedKey: '',
+  equipmentHistoryCursor: '',
+  equipmentHistoryTotal: 0,
+  equipmentActiveCaseId: '',
+  equipmentAppendContext: null,
   activeScreen: 'records',
   notebookSpace: '',
   notebookTag: '',
@@ -379,7 +390,7 @@ async function loadList() {
     const [records, calendarRecords, equipmentRecords] = await Promise.all([
       fetchAllRecords(),
       apiRead('calendar_live', { start: monthStart.toISOString(), end: monthEnd.toISOString() }).catch(() => []),
-      apiRead('equipment_list').catch(() => []),
+      apiRead('equipment_overview').catch(() => apiRead('equipment_list')).catch(() => []),
     ]);
     state.records = records;
     state.recordsLoaded = true;
@@ -452,6 +463,7 @@ function fmtDue(r) {
 function renderRecordCards(rows) {
   return rows.map((r) => {
     const kind = r.kind || (r.type === 'todo' ? 'task' : 'note');
+    const quadrant = kind === 'task' ? taskQuadrantInfo(r) : null;
     const done = r.status === 'done';
     const pending = state.pendingRecordIds.has(r.id);
     const tags = String(r.tags || '').split(',').filter(Boolean)
@@ -466,13 +478,14 @@ function renderRecordCards(rows) {
         ? `<input type="checkbox" aria-label="${done ? '重新開啟' : '標示完成'}：${escapeHtml(r.content)}" ${done ? 'checked' : ''} ${pending ? 'disabled' : ''} data-act="toggle">`
         : '<span class="kind-marker" aria-hidden="true"></span>';
     return `
-    <div class="item space-${spaceTone} ${done ? 'done' : ''} ${pending ? 'syncing' : ''}" data-id="${r.id}" aria-busy="${pending}">
+    <div class="item space-${spaceTone} ${quadrant ? `task-quadrant tone-${quadrant.tone}` : ''} ${done ? 'done' : ''} ${pending ? 'syncing' : ''}" data-id="${r.id}" aria-busy="${pending}">
       ${checkbox}
       <div class="item-main">
         <div class="item-content">${escapeHtml(r.content)}</div>
         <div class="item-footer">
           <div class="item-meta">
             <span class="badge kind-${kind}">${KIND_LABELS[kind] || kind}</span>
+            ${quadrant ? `<span class="badge quadrant-badge">${quadrant.label}</span>` : ''}
             ${r.space ? `<span class="space-meta">${escapeHtml(r.space)}</span>` : ''}
             ${r.important === 'Y' ? '<span class="badge important">重要</span>' : ''}
             ${r.urgent === 'Y' ? '<span class="badge urgent">緊急</span>' : ''}
@@ -553,13 +566,30 @@ function renderTodayOverview(calendarCount, taskCount, recordCount) {
 function todayOverviewData() {
   const todayCalendar = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time));
   const linkedTodayTaskIds = new Set(todayCalendar.map((record) => record.linked_event_id).filter(Boolean));
-  const due = state.records.filter((record) => {
+  const unfinishedTasks = state.records.filter((record) => {
     const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
-    return kind === 'task' && !linkedTodayTaskIds.has(record.id) && !['done', 'cancelled'].includes(record.status) && sameLocalDay(record.due_date);
+    return kind === 'task' && !['done', 'cancelled'].includes(record.status);
   });
-  const dueIds = new Set(due.map((record) => record.id));
-  const created = state.records.filter((record) => sameLocalDay(record.created_at) && !dueIds.has(record.id));
-  return { todayCalendar, due, created };
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const visibleTasks = unfinishedTasks.filter((record) => !linkedTodayTaskIds.has(record.id));
+  const overdue = visibleTasks.filter((record) => {
+    if (!record.due_date) return false;
+    const due = new Date(record.due_date);
+    return !isNaN(due) && due < todayStart;
+  }).sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+  const dueToday = visibleTasks.filter((record) => sameLocalDay(record.due_date))
+    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+  const undated = visibleTasks.filter((record) => !record.due_date).sort((a, b) => {
+    const priorityA = Number(taskHasFlag(a, 'important')) * 4 + Number(taskHasFlag(a, 'urgent')) * 3 + Number(a.status === 'doing') * 2 + Number(a.status === 'waiting');
+    const priorityB = Number(taskHasFlag(b, 'important')) * 4 + Number(taskHasFlag(b, 'urgent')) * 3 + Number(b.status === 'doing') * 2 + Number(b.status === 'waiting');
+    return priorityB - priorityA || new Date(a.created_at || 0) - new Date(b.created_at || 0);
+  });
+  const created = state.records.filter((record) => {
+    const kind = record.kind || (record.type === 'todo' ? 'task' : 'note');
+    return kind !== 'task' && sameLocalDay(record.created_at);
+  });
+  return { todayCalendar, unfinishedTasks, overdue, dueToday, undated, created };
 }
 
 function renderTodayCalendarSection(rows = visibleCalendarRecords().filter((record) => sameLocalDay(record.start_time))) {
@@ -571,17 +601,139 @@ function renderTodayCalendarSection(rows = visibleCalendarRecords().filter((reco
   return `<section class="today-section today-calendar"><div class="today-section-heading"><h3>今日行程</h3><span>${rows.length}</span></div>${cards || renderEmptyToday('calendar')}</section>`;
 }
 
+function compactTaskTiming(record, tone) {
+  if (tone === 'undated') return '未排日期';
+  const due = new Date(record.due_date);
+  if (isNaN(due)) return '';
+  if (tone === 'overdue') {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const days = Math.max(1, Math.ceil((todayStart - due) / 86400000));
+    return `逾期 ${days} 天`;
+  }
+  if (record.all_day === 'Y') return '全天';
+  return due.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function renderCompactTaskRows(rows, tone) {
+  return rows.slice(0, 3).map((record) => {
+    const pending = state.pendingRecordIds.has(record.id);
+    const flags = `${taskHasFlag(record, 'important') ? '<span class="compact-task-flag important">重要</span>' : ''}${taskHasFlag(record, 'urgent') ? '<span class="compact-task-flag urgent">緊急</span>' : ''}`;
+    return `<div class="item today-task-row tone-${tone} ${pending ? 'syncing' : ''}" data-id="${escapeHtml(record.id)}" aria-busy="${pending}">
+      <input type="checkbox" data-act="toggle" aria-label="完成：${escapeHtml(record.content)}" ${pending ? 'disabled' : ''}>
+      <button type="button" class="today-task-main" data-act="edit">
+        <span class="today-task-title">${escapeHtml(record.content)}</span>
+        <span class="today-task-meta">${record.space ? `<span>${escapeHtml(record.space)}</span>` : ''}${flags}</span>
+      </button>
+      <span class="today-task-time">${escapeHtml(compactTaskTiming(record, tone))}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderTodayTaskGroup(title, rows, tone) {
+  if (!rows.length) return '';
+  const remainder = rows.length - Math.min(rows.length, 3);
+  return `<section class="today-task-group tone-${tone}" aria-label="${title} ${rows.length} 件">
+    <div class="today-task-group-heading"><h4>${title}</h4><span>${rows.length}</span></div>
+    ${renderCompactTaskRows(rows, tone)}
+    ${remainder ? `<p class="today-task-remainder">另有 ${remainder} 件，請至完整待辦查看</p>` : ''}
+  </section>`;
+}
+
+function renderTodayTaskBoard(data) {
+  const total = data.unfinishedTasks.length;
+  const groups = renderTodayTaskGroup('已逾期', data.overdue, 'overdue')
+    + renderTodayTaskGroup('今日到期', data.dueToday, 'today')
+    + renderTodayTaskGroup('無日期延續', data.undated, 'undated');
+  return `<section class="today-task-board" aria-labelledby="today-task-board-title">
+    <div class="today-task-board-heading"><div><p class="eyebrow">TASKS</p><h3 id="today-task-board-title">今日待辦</h3></div><span>共 <strong>${total}</strong> 件</span></div>
+    ${groups || `<p class="today-empty">${total ? '目前的待辦都有未來日期，到期時會出現在這裡。' : emptyNote('task')}</p>`}
+    <button type="button" class="today-task-all" data-task-view-all>查看全部 ${total} 件 <span aria-hidden="true">→</span></button>
+  </section>`;
+}
+
+const TASK_QUADRANTS = [
+  { id: 'important-urgent', important: true, urgent: true, label: '立即處理', meta: '重要 × 緊急', tone: 'do' },
+  { id: 'important-not-urgent', important: true, urgent: false, label: '安排時間', meta: '重要 × 不緊急', tone: 'plan' },
+  { id: 'not-important-urgent', important: false, urgent: true, label: '快速處理', meta: '不重要 × 緊急', tone: 'quick' },
+  { id: 'not-important-not-urgent', important: false, urgent: false, label: '稍後處理', meta: '不重要 × 不緊急', tone: 'later' },
+];
+
+function taskHasFlag(record, field) {
+  return record[field] === 'Y' || record[field] === true;
+}
+
+function taskQuadrantRows(rows, quadrantId) {
+  const quadrant = TASK_QUADRANTS.find((entry) => entry.id === quadrantId);
+  if (!quadrant) return [];
+  return rows.filter((record) => taskHasFlag(record, 'important') === quadrant.important
+    && taskHasFlag(record, 'urgent') === quadrant.urgent);
+}
+
+function taskQuadrantInfo(record) {
+  const important = taskHasFlag(record, 'important');
+  const urgent = taskHasFlag(record, 'urgent');
+  return TASK_QUADRANTS.find((entry) => entry.important === important && entry.urgent === urgent)
+    || TASK_QUADRANTS[TASK_QUADRANTS.length - 1];
+}
+
+function renderTaskMatrix(rows) {
+  const cells = TASK_QUADRANTS.map((quadrant) => {
+    const count = taskQuadrantRows(rows, quadrant.id).length;
+    return `<button type="button" class="eisenhower-cell tone-${quadrant.tone}" data-task-quadrant="${quadrant.id}" aria-label="${quadrant.meta}，${quadrant.label}，${count} 筆待辦">
+      <small>${quadrant.meta}</small>
+      <strong>${count}</strong>
+      <span>${quadrant.label}</span>
+      <em>查看待辦</em>
+    </button>`;
+  }).join('');
+  return `<section class="eisenhower-view" aria-labelledby="eisenhower-title">
+    <div class="eisenhower-heading">
+      <div class="eisenhower-title-copy"><p class="eyebrow">Eisenhower Matrix</p><h3 id="eisenhower-title">艾森豪矩陣</h3><p>點選方格查看詳細待辦</p></div>
+    </div>
+    <div class="eisenhower-axis axis-top" aria-hidden="true">緊急程度 →</div>
+    <div class="eisenhower-frame"><div class="eisenhower-axis axis-side" aria-hidden="true">重要程度</div><div class="eisenhower-grid">${cells}</div></div>
+  </section>`;
+}
+
+function renderTaskQuadrantDetail(rows, quadrantId) {
+  const quadrant = TASK_QUADRANTS.find((entry) => entry.id === quadrantId);
+  if (!quadrant) return renderTaskMatrix(rows);
+  const detailRows = taskQuadrantRows(rows, quadrantId);
+  return `<section class="eisenhower-detail tone-${quadrant.tone}" aria-labelledby="task-quadrant-title">
+    <div class="eisenhower-detail-heading">
+      <button type="button" class="eisenhower-back" data-task-matrix-back aria-label="返回艾森豪矩陣">← <span>矩陣</span></button>
+      <div><small>${quadrant.meta}</small><h3 id="task-quadrant-title" tabindex="-1">${quadrant.label}</h3></div>
+      <strong aria-label="${detailRows.length} 筆">${detailRows.length}</strong>
+    </div>
+    ${detailRows.length ? renderRecordCards(detailRows) : '<div class="empty"><strong>這一格目前是空的</strong><span>待辦的「重要／緊急」設定改變後，會自動移到對應方格。</span></div>'}
+  </section>`;
+}
+
+function renderTaskAllDetails(rows) {
+  return `<details class="task-all-details">
+    <summary><span><small>ALL TASKS</small><strong>全部未完成待辦</strong></span><b>${rows.length}</b></summary>
+    <div class="task-all-body">${rows.length ? renderRecordCards(rows) : '<p class="today-empty">目前沒有未完成待辦。</p>'}</div>
+  </details>`;
+}
+
 function renderList() {
   const keyword = $('#search').value.trim().toLowerCase();
   $('#records-screen').classList.toggle('searching', !!keyword || !!state.filterTag);
   const today = todayOverviewData();
-  $('#today-overview-slot').innerHTML = renderTodayOverview(today.todayCalendar.length, today.due.length, today.created.length);
+  $('#today-overview-slot').innerHTML = renderTodayOverview(today.todayCalendar.length, today.unfinishedTasks.length, today.created.length);
   if (keyword || state.filterTag) { renderGlobalSearch(keyword, state.filterTag); return; }
   const rows = visibleRecords();
   if (state.activeView === 'today') {
     $('#list').innerHTML = renderTodayCalendarSection(today.todayCalendar)
-      + renderTodaySection('今日到期', today.due, 'task')
-      + renderTodaySection('今日新增', today.created, 'record');
+      + renderTodayTaskBoard(today)
+      + renderTodaySection('今日記錄', today.created, 'record');
+    return;
+  }
+  if (state.activeView === 'task') {
+    $('#list').innerHTML = state.taskQuadrant
+      ? renderTaskQuadrantDetail(rows, state.taskQuadrant)
+      : renderTaskMatrix(rows) + renderTaskAllDetails(rows);
     return;
   }
   $('#list').innerHTML = rows.length ? renderRecordCards(rows) : `<div class="empty"><strong>目前沒有符合的記錄</strong><span>${emptyNote('record')}</span></div>`;
@@ -852,6 +1004,26 @@ async function updateTaskStatusOptimistically(id, status) {
 }
 
 async function onListClick(e) {
+  if (e.target.closest('[data-task-view-all]')) {
+    setActiveView('task');
+    $('#list').scrollIntoView({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth', block: 'start' });
+    return;
+  }
+  const quadrantCell = e.target.closest('[data-task-quadrant]');
+  if (quadrantCell) {
+    state.taskQuadrant = quadrantCell.dataset.taskQuadrant;
+    renderList();
+    const heading = document.querySelector('#task-quadrant-title');
+    heading?.focus?.({ preventScroll: true });
+    $('#list').scrollIntoView({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth', block: 'start' });
+    return;
+  }
+  if (e.target.closest('[data-task-matrix-back]')) {
+    state.taskQuadrant = '';
+    renderList();
+    document.querySelector('#eisenhower-title')?.focus?.({ preventScroll: true });
+    return;
+  }
   const searchCalendar = e.target.closest('[data-search-calendar]');
   if (searchCalendar) {
     const record = state.calendarSearchRecords.find((item) => item.id === searchCalendar.dataset.searchCalendar);
@@ -1185,6 +1357,7 @@ function setActiveKind(kind) {
 
 function setActiveView(view) {
   state.activeView = view;
+  state.taskQuadrant = '';
   $('#records-panel').open = true;
   document.querySelectorAll('.view-btn').forEach((button) => {
     const active = button.dataset.view === view;
@@ -1398,6 +1571,100 @@ function equipmentMatchesKeyword(record, keyword) {
   return !keyword || [record.customer, record.machine, record.description, record.action_taken, record.tags, status.label].join(' ').toLowerCase().includes(keyword);
 }
 
+function equipmentRecordTime(record) {
+  const value = new Date(record.occurred_at || record.created_at).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
+function equipmentDeviceGroups(records = state.equipmentRecords) {
+  const groups = new Map();
+  records.forEach((record) => {
+    const customer = String(record.customer || '').trim();
+    const machine = String(record.machine || '').trim();
+    if (!machine) return;
+    const key = JSON.stringify([customerKey(customer), machine.toLowerCase()]);
+    if (!groups.has(key)) groups.set(key, { customer, machine, records: [], recordCount: 0 });
+    groups.get(key).records.push(record);
+    groups.get(key).recordCount += Math.max(1, Number(record.record_count) || 1);
+  });
+  return [...groups.values()].map((device) => {
+    device.records.sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a));
+    device.latest = device.records[0];
+    return device;
+  });
+}
+
+function equipmentIsOpen(record) {
+  return record && record.status !== 'resolved';
+}
+
+function renderEquipmentViewSwitch(devices) {
+  const inboxCount = devices.filter((device) => equipmentIsOpen(device.latest)).length;
+  $('#equipment-inbox-count').textContent = String(inboxCount);
+  $('#equipment-device-count').textContent = String(devices.length);
+  document.querySelectorAll('[data-equipment-view]').forEach((button) => {
+    const active = button.dataset.equipmentView === state.equipmentView;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function equipmentStatusRank(status) {
+  return ({ recurring: 0, active: 0, waiting_parts: 1, waiting_vendor: 1, waiting_customer: 2, watching: 3, paused: 4, resolved: 5 })[status] ?? 4;
+}
+
+function renderEquipmentOverview(customer = '') {
+  $('#equipment-list').classList.add('device-index');
+  const keyword = $('#equipment-search').value.trim().toLowerCase();
+  const statusFilter = $('#equipment-status-filter').value;
+  const allDevices = equipmentDeviceGroups();
+  renderEquipmentViewSwitch(allDevices);
+  let devices = equipmentDeviceGroups(state.equipmentRecords.filter((record) => {
+    if (customer && customerKey(record.customer) !== customer) return false;
+    return equipmentMatchesKeyword(record, keyword) && timelineDateAllowed(record.occurred_at || record.created_at);
+  }));
+  devices = devices.filter((device) => !statusFilter || device.latest.status === statusFilter || (device.latest.status === 'active' && statusFilter === 'recurring'));
+  if (state.equipmentView === 'inbox') devices = devices.filter((device) => equipmentIsOpen(device.latest));
+  devices.sort((a, b) => equipmentStatusRank(a.latest.status) - equipmentStatusRank(b.latest.status) || equipmentRecordTime(a.latest) - equipmentRecordTime(b.latest));
+
+  const waiting = devices.filter((device) => ['waiting_parts', 'waiting_customer', 'waiting_vendor'].includes(device.latest.status)).length;
+  const recurring = devices.filter((device) => ['recurring', 'active'].includes(device.latest.status)).length;
+  const watching = devices.filter((device) => device.latest.status === 'watching').length;
+  $('#equipment-overview').hidden = false;
+  $('#equipment-overview').innerHTML = state.equipmentView === 'inbox' ? `
+    <div class="equipment-overview-copy"><div><span>OPEN CASES</span><strong>${devices.length}</strong></div><p>每台設備只顯示最新狀態；舊紀錄留在設備裡。</p></div>
+    <div class="equipment-overview-metrics"><span><i class="tone-recurring"></i>持續 ${recurring}</span><span><i class="tone-waiting"></i>等待 ${waiting}</span><span><i class="tone-watching"></i>觀察 ${watching}</span></div>` : `
+    <div class="equipment-overview-copy"><div><span>DEVICE INDEX</span><strong>${devices.length}</strong></div><p>依設備整理，不把事件、待辦與行程攤在同一層。</p></div>`;
+
+  const visibleDevices = devices.slice(0, state.equipmentVisibleLimit);
+  const label = customer ? (devices[0]?.customer || '所選客戶') : (state.equipmentView === 'inbox' ? '待處理' : '全部設備');
+  $('#equipment-timeline-context').textContent = `${label} · 已顯示 ${visibleDevices.length}／共 ${devices.length} 台`;
+  setEquipmentPagination(devices.length, visibleDevices.length);
+  if (!devices.length) {
+    $('#equipment-list').innerHTML = state.equipmentView === 'inbox'
+      ? '<div class="empty equipment-clear"><strong>目前沒有待處理設備</strong><span>已解決的設備仍可在「全部設備」找到。</span></div>'
+      : '<div class="empty"><strong>沒有符合的設備</strong><span>調整搜尋或篩選條件。</span></div>';
+    return;
+  }
+  $('#equipment-list').innerHTML = visibleDevices.map((device) => {
+    const latest = device.latest;
+    const status = EQUIPMENT_STATUS[latest.status] || EQUIPMENT_STATUS.recurring;
+    const ageDays = Math.max(0, Math.floor((Date.now() - equipmentRecordTime(latest)) / 86400000));
+    const ageText = ageDays === 0 ? '今天更新' : ageDays === 1 ? '昨天更新' : `${ageDays} 天未更新`;
+    const followUpTime = latest.follow_up_at ? new Date(latest.follow_up_at).getTime() : 0;
+    const followUpText = followUpTime ? `追蹤 ${fmtDate(latest.follow_up_at)}` : '';
+    const followUpOverdue = followUpTime && followUpTime < Date.now() && equipmentIsOpen(latest);
+    const pair = escapeHtml(JSON.stringify([device.customer, device.machine]));
+    return `<button type="button" class="equipment-device-card status-${status.tone}" data-equipment-device="${pair}" aria-label="查看 ${escapeHtml(device.machine)} 的完整脈絡">
+      <div class="equipment-device-card-top"><span class="equipment-customer-label">${escapeHtml(device.customer || '未指定客戶')}</span><div class="equipment-card-badges">${latest.severity ? `<span class="equipment-severity severity-${escapeHtml(latest.severity)}">${escapeHtml(EQUIPMENT_SEVERITY_LABELS[latest.severity] || latest.severity)}</span>` : ''}<div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>
+      <h3>${escapeHtml(device.machine)}</h3>
+      <p>${escapeHtml(latest.description || '尚未填寫問題描述')}</p>
+      ${latest.action_taken ? `<div class="equipment-latest-action"><span>最近處理</span>${escapeHtml(latest.action_taken)}</div>` : ''}
+      <div class="equipment-device-card-foot"><span>${Number(latest.open_case_count) > 1 ? `${Number(latest.open_case_count)} 個未結案件` : `${device.recordCount} 筆歷程`}</span>${followUpText ? `<time class="${followUpOverdue ? 'overdue' : ''}">${escapeHtml(followUpText)}</time>` : `<time class="${ageDays >= 7 && equipmentIsOpen(latest) ? 'stale' : ''}">${ageText}</time>`}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+    </button>`;
+  }).join('');
+}
+
 function rawCustomerKey(value) { return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
 function customerKey(value) { const key = rawCustomerKey(value); return rawCustomerKey(state.customerAliases[key] || key); }
 
@@ -1429,7 +1696,7 @@ function renderEquipmentMachineFilter() {
   state.equipmentRecords.filter((r) => (!customer || customerKey(r.customer) === customer) && equipmentMatchesKeyword(r, keyword)).forEach((r) => {
     const customer = String(r.customer || '').trim();
     const machine = String(r.machine || '').trim();
-    const key = JSON.stringify([customer.toLowerCase(), machine.toLowerCase()]);
+    const key = JSON.stringify([customerKey(customer), machine.toLowerCase()]);
     if (!pairs.has(key)) pairs.set(key, { customer, machine });
   });
   const selected = $('#equipment-machine-filter').value;
@@ -1463,27 +1730,67 @@ function equipmentContextText(label, total, visible) {
 
 function renderEquipmentFocus(customer, pair) {
   const focus = $('#equipment-focus');
+  $('#btn-equipment-append').hidden = !pair;
   if (!customer && !pair) { focus.hidden = true; return; }
   focus.hidden = false;
   if (pair) {
-    const allRows = state.equipmentRecords.filter((record) => record.customer === pair[0] && record.machine === pair[1]);
+    const focusSource = state.equipmentFocusedKey === equipmentPairKey(pair) && state.equipmentFocusedRecords.length ? state.equipmentFocusedRecords : state.equipmentRecords;
+    const allRows = focusSource.filter((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1] || '').trim().toLowerCase());
     const latest = [...allRows].sort((a, b) => new Date(b.occurred_at || b.created_at) - new Date(a.occurred_at || a.created_at))[0];
     const status = latest ? (EQUIPMENT_STATUS[latest.status] || EQUIPMENT_STATUS.recurring) : null;
-    $('#equipment-focus-eyebrow').textContent = 'DEVICE TIMELINE';
+    $('#equipment-focus-eyebrow').textContent = 'DEVICE CASE';
     $('#equipment-focus-title').textContent = pair[1];
     $('#equipment-focus-subtitle').textContent = pair[0] || '未指定客戶';
     $('#equipment-focus-status').innerHTML = status ? `<div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div>` : '';
-    $('#equipment-focus-count').textContent = `${allRows.length} 筆設備紀錄`;
+    const historyCount = state.equipmentFocusedKey === equipmentPairKey(pair) && state.equipmentHistoryTotal ? state.equipmentHistoryTotal : (Number(latest?.record_count) || allRows.length);
+    $('#equipment-focus-count').textContent = `${historyCount} 筆處理歷程`;
     return;
   }
   const matching = state.equipmentRecords.filter((record) => customerKey(record.customer) === customer);
   const label = matching[0]?.customer || customer;
   const machineCount = new Set(matching.map((record) => String(record.machine || '').trim().toLowerCase()).filter(Boolean)).size;
-  $('#equipment-focus-eyebrow').textContent = 'CUSTOMER TIMELINE';
+  $('#equipment-focus-eyebrow').textContent = 'CUSTOMER EQUIPMENT';
   $('#equipment-focus-title').textContent = label;
-  $('#equipment-focus-subtitle').textContent = '設備、待辦與行程，關聯資料合併呈現';
-  $('#equipment-focus-status').innerHTML = '<span class="equipment-focus-label">客戶全紀錄</span>';
+  $('#equipment-focus-subtitle').textContent = '只列出這個客戶的設備，不混入其他類型資料';
+  $('#equipment-focus-status').innerHTML = '<span class="equipment-focus-label">客戶設備清單</span>';
   $('#equipment-focus-count').textContent = `${machineCount} 台設備`;
+}
+
+function equipmentCaseGroups(records) {
+  const groups = new Map();
+  records.forEach((record) => {
+    const id = String(record.case_id || '').trim() || '__legacy__';
+    if (!groups.has(id)) groups.set(id, { id, records: [] });
+    groups.get(id).records.push(record);
+  });
+  return [...groups.values()].map((group) => {
+    group.records.sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a));
+    group.latest = group.records[0];
+    return group;
+  }).sort((a, b) => Number(equipmentIsOpen(b.latest)) - Number(equipmentIsOpen(a.latest)) || equipmentRecordTime(b.latest) - equipmentRecordTime(a.latest));
+}
+
+function renderEquipmentCaseSwitcher(pair, records) {
+  const switcher = $('#equipment-case-switcher');
+  const cases = equipmentCaseGroups(records);
+  switcher.hidden = !pair || cases.length < 2;
+  if (switcher.hidden) { switcher.innerHTML = ''; return; }
+  const allActive = !state.equipmentActiveCaseId;
+  switcher.innerHTML = `<div class="equipment-case-heading"><strong>案件</strong><span>${cases.length} 個問題脈絡</span></div><div class="equipment-case-options">
+    <button type="button" data-equipment-case="" class="${allActive ? 'active' : ''}" aria-pressed="${allActive}"><strong>全部歷程</strong><span>${records.length} 筆</span></button>
+    ${cases.map((item) => {
+      const active = state.equipmentActiveCaseId === item.id;
+      const status = EQUIPMENT_STATUS[item.latest.status] || EQUIPMENT_STATUS.recurring;
+      const label = item.id === '__legacy__' ? '舊版歷程' : (item.latest.description || '未命名案件');
+      return `<button type="button" data-equipment-case="${escapeHtml(item.id)}" class="${active ? 'active' : ''}" aria-pressed="${active}"><strong>${escapeHtml(label)}</strong><span>${status.label} · ${item.records.length} 筆</span></button>`;
+    }).join('')}
+  </div>`;
+}
+
+function setEquipmentCase(caseId) {
+  state.equipmentActiveCaseId = caseId || '';
+  resetEquipmentVisibleLimit();
+  renderEquipmentList();
 }
 
 function scrollToEquipmentHistory() {
@@ -1492,24 +1799,143 @@ function scrollToEquipmentHistory() {
 }
 
 function openEquipmentCustomerTimeline(label) {
+  state.equipmentView = 'devices';
+  $('#equipment-search').value = '';
+  $('#equipment-status-filter').value = '';
+  $('#equipment-date-from').value = '';
+  $('#equipment-date-to').value = '';
   $('#equipment-customer-filter').value = customerKey(label);
   renderEquipmentMachineFilter();
   $('#equipment-machine-filter').value = '';
+  state.equipmentFocusedRecords = [];
+  state.equipmentFocusedKey = '';
+  state.equipmentHistoryCursor = '';
+  state.equipmentActiveCaseId = '';
   resetEquipmentVisibleLimit();
   renderEquipmentList();
   scrollToEquipmentHistory();
 }
 
-function openEquipmentDeviceTimeline(value) {
+function equipmentPairKey(pair) {
+  return pair?.[1] ? JSON.stringify([customerKey(pair[0]), String(pair[1]).trim().toLowerCase()]) : '';
+}
+
+async function loadEquipmentHistory(pair, append = false) {
+  const summary = state.equipmentRecords.find((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase());
+  const key = equipmentPairKey(pair);
+  $('#equipment-list').setAttribute('aria-busy', 'true');
+  try {
+    let result;
+    try {
+      result = await apiRead('equipment_history', {
+        device_id: summary?.device_id || '', customer: pair[0] || '', machine: pair[1],
+        cursor: append ? state.equipmentHistoryCursor : '', page_size: 100, keyword: $('#equipment-search').value.trim(),
+      });
+    } catch (_) {
+      const legacy = await apiRead('equipment_list');
+      const items = legacy.filter((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase());
+      result = { items, total: items.length, next_cursor: '' };
+    }
+    const items = Array.isArray(result) ? result : (result.items || []);
+    state.equipmentFocusedRecords = append ? state.equipmentFocusedRecords.concat(items) : items;
+    state.equipmentFocusedKey = key;
+    state.equipmentHistoryCursor = result.next_cursor || '';
+    state.equipmentHistoryTotal = Number(result.total) || state.equipmentFocusedRecords.length;
+    if (!append) {
+      const cases = equipmentCaseGroups(items);
+      const current = cases.find((item) => item.id !== '__legacy__' && equipmentIsOpen(item.latest));
+      state.equipmentActiveCaseId = current?.id || '';
+    }
+    renderEquipmentList();
+  } catch (err) {
+    $('#equipment-list').innerHTML = `<div class="empty"><strong>設備歷程載入失敗</strong><span>${escapeHtml(err.message)}</span></div>`;
+  } finally {
+    $('#equipment-list').setAttribute('aria-busy', 'false');
+  }
+}
+
+function scheduleEquipmentSearch() {
+  clearTimeout(equipmentSearchTimer);
+  equipmentSearchTimer = setTimeout(async () => {
+    let pair = null; try { pair = JSON.parse($('#equipment-machine-filter').value || ''); } catch (_) { pair = null; }
+    resetEquipmentVisibleLimit();
+    if (pair?.[1]) { await loadEquipmentHistory(pair); return; }
+    try {
+      state.equipmentRecords = await apiRead('equipment_overview', { keyword: $('#equipment-search').value.trim() });
+      renderEquipmentSuggestions();
+      renderEquipmentCustomerFilter();
+      renderEquipmentList();
+    } catch (_) {
+      renderEquipmentMachineFilter();
+      renderEquipmentList();
+    }
+  }, 350);
+}
+
+async function openEquipmentDeviceTimeline(value) {
   let pair = null;
   try { pair = JSON.parse(value); } catch (_) { pair = null; }
   if (!pair?.[1]) return;
+  $('#equipment-search').value = '';
+  $('#equipment-status-filter').value = '';
+  $('#equipment-date-from').value = '';
+  $('#equipment-date-to').value = '';
   $('#equipment-customer-filter').value = '';
   renderEquipmentMachineFilter();
   $('#equipment-machine-filter').value = JSON.stringify(pair);
+  state.equipmentFocusedRecords = [];
+  state.equipmentFocusedKey = equipmentPairKey(pair);
+  state.equipmentHistoryCursor = '';
+  state.equipmentHistoryTotal = 0;
+  state.equipmentActiveCaseId = '';
   resetEquipmentVisibleLimit();
   renderEquipmentList();
   scrollToEquipmentHistory();
+  await loadEquipmentHistory(pair);
+}
+
+function appendEquipmentProgress() {
+  let pair = null;
+  try { pair = JSON.parse($('#equipment-machine-filter').value || ''); } catch (_) { pair = null; }
+  if (!pair?.[1]) return;
+  const source = state.equipmentFocusedRecords.length ? state.equipmentFocusedRecords : state.equipmentRecords;
+  const latest = source.filter((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase()).filter((record) => !state.equipmentActiveCaseId || (state.equipmentActiveCaseId === '__legacy__' ? !record.case_id : record.case_id === state.equipmentActiveCaseId)).sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a))[0];
+  state.equipmentAppendContext = { device_id: latest?.device_id || '', case_id: latest?.status === 'resolved' ? '' : (latest?.case_id || '') };
+  $('#equipment-customer').value = pair[0] || '';
+  $('#equipment-machine').value = pair[1];
+  $('#equipment-description').value = '';
+  $('#equipment-action').value = '';
+  $('#equipment-capture-title').textContent = '追加處理進度';
+  $('#equipment-capture-hint').textContent = `${pair[0] ? `${pair[0]} · ` : ''}${pair[1]}`;
+  $('#equipment-event-type').value = 'progress';
+  setEquipmentNow();
+  renderEquipmentFormMachineSuggestions();
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+  $('.equipment-capture').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  setTimeout(() => $('#equipment-description').focus({ preventScroll: true }), reducedMotion ? 0 : 320);
+}
+
+function prepareNewEquipmentCase() {
+  state.equipmentAppendContext = null;
+  $('#equipment-capture-title').textContent = '新增設備案件';
+  $('#equipment-capture-hint').textContent = '建立新問題；後續處理請從設備內追加';
+  $('#equipment-event-type').value = 'issue';
+  $('#equipment-customer').value = '';
+  $('#equipment-machine').value = '';
+  $('#equipment-description').value = '';
+  $('#equipment-action').value = '';
+  syncEquipmentResolutionFields();
+}
+
+function setEquipmentView(view) {
+  state.equipmentView = view === 'devices' ? 'devices' : 'inbox';
+  $('#equipment-machine-filter').value = '';
+  state.equipmentFocusedRecords = [];
+  state.equipmentFocusedKey = '';
+  state.equipmentHistoryCursor = '';
+  state.equipmentActiveCaseId = '';
+  resetEquipmentVisibleLimit();
+  renderEquipmentList();
 }
 
 function showAllEquipment() {
@@ -1520,6 +1946,11 @@ function showAllEquipment() {
   $('#equipment-status-filter').value = '';
   $('#equipment-date-from').value = '';
   $('#equipment-date-to').value = '';
+  state.equipmentView = 'devices';
+  state.equipmentFocusedRecords = [];
+  state.equipmentFocusedKey = '';
+  state.equipmentHistoryCursor = '';
+  state.equipmentActiveCaseId = '';
   resetEquipmentVisibleLimit();
   renderEquipmentList();
   scrollToEquipmentHistory();
@@ -1615,16 +2046,27 @@ function renderEquipmentList() {
   let pair = null;
   try { pair = machineFilter ? JSON.parse(machineFilter) : null; } catch (_) { pair = null; }
   $('#btn-customer-alias').hidden = !customer;
-  if (customer && !pair) { renderCustomerTimeline(customer); return; }
+  $('#equipment-view-switch').hidden = Boolean(pair);
+  if (!pair) {
+    renderEquipmentFocus(customer, null);
+    renderEquipmentOverview(customer);
+    return;
+  }
   $('#equipment-current-summary').hidden = true;
+  $('#equipment-overview').hidden = true;
+  $('#equipment-list').classList.remove('device-index');
   renderEquipmentFocus('', pair);
   const keyword = $('#equipment-search').value.trim().toLowerCase();
   const statusFilter = $('#equipment-status-filter').value;
-  const rows = state.equipmentRecords.filter((r) => (!pair || (r.customer === pair[0] && r.machine === pair[1])) && (!statusFilter || r.status === statusFilter || (r.status === 'active' && statusFilter === 'recurring')) && equipmentMatchesKeyword(r, keyword) && timelineDateAllowed(r.occurred_at || r.created_at));
+  const sourceRows = state.equipmentFocusedKey === equipmentPairKey(pair) && state.equipmentFocusedRecords.length ? state.equipmentFocusedRecords : state.equipmentRecords;
+  const deviceRows = sourceRows.filter((r) => customerKey(r.customer) === customerKey(pair[0]) && String(r.machine || '').trim().toLowerCase() === String(pair[1] || '').trim().toLowerCase());
+  renderEquipmentCaseSwitcher(pair, deviceRows);
+  const rows = deviceRows.filter((r) => !state.equipmentActiveCaseId || (state.equipmentActiveCaseId === '__legacy__' ? !r.case_id : r.case_id === state.equipmentActiveCaseId)).filter((r) => (!statusFilter || r.status === statusFilter || (r.status === 'active' && statusFilter === 'recurring')) && equipmentMatchesKeyword(r, keyword) && timelineDateAllowed(r.occurred_at || r.created_at)).sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a));
   const visibleRows = rows.slice(0, state.equipmentVisibleLimit);
   const contextLabel = pair ? `${pair[0] ? `${pair[0]} · ` : ''}${pair[1]}` : '';
-  $('#equipment-timeline-context').textContent = equipmentContextText(contextLabel, rows.length, visibleRows.length);
-  setEquipmentPagination(rows.length, visibleRows.length);
+  const totalRows = state.equipmentActiveCaseId ? rows.length : (state.equipmentFocusedKey === equipmentPairKey(pair) && state.equipmentHistoryTotal ? state.equipmentHistoryTotal : rows.length);
+  $('#equipment-timeline-context').textContent = equipmentContextText(contextLabel, totalRows, visibleRows.length);
+  setEquipmentPagination(totalRows, visibleRows.length);
   if (!rows.length) {
     $('#equipment-list').innerHTML = `<div class="empty"><strong>還沒有設備紀錄</strong><span>${emptyNote('equipment')}</span></div>`;
     return;
@@ -1633,13 +2075,17 @@ function renderEquipmentList() {
     const attachment = parseAttachments(r.attachments)[0];
     const equipmentStatus = EQUIPMENT_STATUS[r.status] || EQUIPMENT_STATUS.recurring;
     const tags = String(r.tags || '').split(',').filter(Boolean).map((tag) => `<span class="item-tag">#${escapeHtml(tag)}</span>`).join(' ');
+    const eventLabel = EQUIPMENT_EVENT_LABELS[r.event_type] || (r.status === 'resolved' ? '結案' : '設備紀錄');
     const customerButton = r.customer ? `<button type="button" class="equipment-entity-link" data-equipment-customer="${escapeHtml(r.customer)}"><strong>${escapeHtml(r.customer)}</strong></button>` : '';
     const deviceButton = r.machine ? `<button type="button" class="equipment-entity-link" data-equipment-device="${escapeHtml(JSON.stringify([r.customer || '', r.machine]))}"><span>${escapeHtml(r.machine)}</span></button>` : '';
     return `<article class="equipment-item" data-id="${escapeHtml(r.id)}">
       <div class="equipment-item-head"><div class="equipment-entity-links">${customerButton}${deviceButton}</div><div class="equipment-head-side"><time>${fmtDate(r.occurred_at || r.created_at)}</time><div class="equipment-status-badge status-${equipmentStatus.tone}"><span aria-hidden="true"></span>${equipmentStatus.label}</div></div></div>
+      <div class="equipment-event-label">${escapeHtml(eventLabel)}${r.technician ? ` · ${escapeHtml(r.technician)}` : ''}</div>
       <p>${escapeHtml(r.description)}</p>
       ${r.action_taken ? `<div class="equipment-action"><span>處理</span>${escapeHtml(r.action_taken)}</div>` : ''}
-      <div class="item-meta">${tags}${r.linked_event_id ? '<span class="space-meta">已關聯記錄</span>' : ''}${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div>
+      ${r.root_cause ? `<div class="equipment-report-note"><span>根因</span>${escapeHtml(r.root_cause)}</div>` : ''}
+      ${r.resolution_summary ? `<div class="equipment-report-note"><span>結案</span>${escapeHtml(r.resolution_summary)}</div>` : ''}
+      <div class="item-meta">${tags}${r.follow_up_at ? `<span class="space-meta">追蹤 ${fmtDate(r.follow_up_at)}</span>` : ''}${r.linked_event_id ? '<span class="space-meta">已關聯記錄</span>' : ''}${attachment ? `<button type="button" class="attachment-btn" data-equipment-act="attachment" data-file-id="${escapeHtml(attachment.file_id)}" data-attachment-action="equipment_attachment">照片</button>` : ''}</div>
       <button type="button" class="equipment-edit" data-equipment-act="edit">編輯</button>
       <button type="button" class="equipment-delete" data-equipment-act="delete" aria-label="刪除設備紀錄：${escapeHtml(r.machine)}">刪除</button>
     </article>`;
@@ -1659,8 +2105,9 @@ async function loadEquipment() {
     const recordsRequest = state.recordsLoaded ? Promise.resolve(state.records) : fetchAllRecords();
     const calendarRequest = state.calendarSearchLoaded ? Promise.resolve(state.calendarSearchRecords) : apiRead('calendar_list').catch(() => null);
     const aliasesRequest = state.customerAliasesLoaded ? Promise.resolve(state.customerAliases) : apiRead('customer_aliases').catch(() => null);
+    const equipmentRequest = apiRead('equipment_overview').catch(() => apiRead('equipment_list'));
     const [equipmentRecords, records, calendarRecords, aliases] = await Promise.all([
-      apiRead('equipment_list'), recordsRequest, calendarRequest, aliasesRequest,
+      equipmentRequest, recordsRequest, calendarRequest, aliasesRequest,
     ]);
     state.equipmentRecords = equipmentRecords;
     state.records = records;
@@ -1729,6 +2176,49 @@ async function handleEquipmentPhoto(event) {
   } finally { state.equipmentPhotoBusy = false; }
 }
 
+function syncEquipmentResolutionFields() {
+  const resolved = $('#equipment-status').value === 'resolved';
+  $('#equipment-resolution-fields').hidden = !resolved;
+  if (resolved) $('#equipment-event-type').value = 'closure';
+  else if ($('#equipment-event-type').value === 'closure') $('#equipment-event-type').value = state.equipmentAppendContext ? 'progress' : 'issue';
+}
+
+async function exportEquipmentCsv() {
+  const button = $('#btn-equipment-export');
+  let pair = null;
+  try { pair = JSON.parse($('#equipment-machine-filter').value || ''); } catch (_) { pair = null; }
+  const summary = pair ? state.equipmentRecords.find((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase()) : null;
+  const data = {
+    device_id: summary?.device_id || '',
+    customer: pair?.[0] || ($('#equipment-customer-filter').selectedOptions[0]?.textContent || ''),
+    machine: pair?.[1] || '',
+    status: $('#equipment-status-filter').value,
+    date_from: $('#equipment-date-from').value,
+    date_to: $('#equipment-date-to').value,
+  };
+  button.disabled = true;
+  const original = button.innerHTML;
+  button.textContent = '整理資料中…';
+  try {
+    const result = await apiRead('equipment_export', data);
+    const blob = new Blob([`\uFEFF${result.csv || ''}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = result.filename || 'Whence_設備紀錄.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`已匯出 ${result.count || 0} 筆設備資料`);
+  } catch (err) {
+    toast(`匯出失敗：${err.message}`);
+  } finally {
+    button.disabled = false;
+    button.innerHTML = original;
+  }
+}
+
 async function saveEquipment() {
   const machine = $('#equipment-machine').value.trim();
   const description = $('#equipment-description').value.trim();
@@ -1743,7 +2233,17 @@ async function saveEquipment() {
     status: $('#equipment-status').value,
     tags: $('#equipment-tags').value,
     occurred_at: new Date(occurredValue).toISOString(),
+    device_id: state.equipmentAppendContext?.device_id || '',
+    case_id: state.equipmentAppendContext?.case_id || '',
+    append_to_current: Boolean(state.equipmentAppendContext),
+    event_type: $('#equipment-event-type').value,
+    severity: $('#equipment-severity').value,
+    technician: $('#equipment-technician').value,
+    root_cause: $('#equipment-root-cause').value,
+    resolution_summary: $('#equipment-resolution-summary').value,
+    downtime_minutes: $('#equipment-downtime').value,
   };
+  if ($('#equipment-follow-up').value) data.follow_up_at = new Date($('#equipment-follow-up').value).toISOString();
   const linkedKind = $('#equipment-linked-kind').value;
   if (linkedKind) {
     data.linked_kind = linkedKind;
@@ -1755,17 +2255,25 @@ async function saveEquipment() {
   button.disabled = true; button.textContent = '儲存中…';
   try {
     await apiPost('equipment_create', data);
-    ['#equipment-description', '#equipment-action', '#equipment-tags'].forEach((selector) => { $(selector).value = ''; });
+    ['#equipment-description', '#equipment-action', '#equipment-tags', '#equipment-follow-up', '#equipment-root-cause', '#equipment-resolution-summary', '#equipment-downtime'].forEach((selector) => { $(selector).value = ''; });
     state.equipmentAttachment = null;
     $('#equipment-photo-input').value = '';
     $('#equipment-photo-status').textContent = '';
     $('#equipment-linked-kind').value = '';
     $('#equipment-linked-fields').hidden = true;
+    state.equipmentAppendContext = null;
+    state.equipmentFocusedRecords = [];
+    state.equipmentFocusedKey = '';
+    state.equipmentHistoryCursor = '';
+    $('#equipment-capture-title').textContent = '新增設備案件';
+    $('#equipment-capture-hint').textContent = '建立新問題；後續處理請從設備內追加';
+    $('#equipment-event-type').value = 'issue';
+    syncEquipmentResolutionFields();
     setEquipmentNow();
     toast('設備紀錄已儲存');
     await loadEquipment();
   } catch (err) { toast(`儲存失敗：${err.message}`); }
-  finally { button.disabled = false; button.textContent = '儲存設備紀錄'; }
+  finally { button.disabled = false; button.textContent = '儲存設備進度'; }
 }
 
 function setEquipmentNow() {
@@ -2199,7 +2707,7 @@ function init() {
     setTimeout(() => capture.classList.remove('capture-attention'), reducedMotion ? 0 : 900);
   };
   $('#btn-jump-capture').addEventListener('click', () => jumpToCapture('#input-card'));
-  $('#btn-jump-equipment-capture').addEventListener('click', () => jumpToCapture('.equipment-capture'));
+  $('#btn-jump-equipment-capture').addEventListener('click', () => { prepareNewEquipmentCase(); jumpToCapture('.equipment-capture'); });
   document.querySelectorAll('.space-btn').forEach((button) =>
     button.addEventListener('click', () => toggleQuickSpace(button.dataset.space)));
   $('#space').addEventListener('input', syncSpaceButtons);
@@ -2296,16 +2804,34 @@ function init() {
     button.addEventListener('click', () => switchScreen(button.dataset.screen)));
   $('#equipment-photo-input').addEventListener('change', handleEquipmentPhoto);
   $('#btn-save-equipment').addEventListener('click', saveEquipment);
-  $('#equipment-search').addEventListener('input', () => { resetEquipmentVisibleLimit(); renderEquipmentMachineFilter(); renderEquipmentList(); });
-  $('#equipment-machine-filter').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
+  $('#equipment-search').addEventListener('input', scheduleEquipmentSearch);
+  $('#equipment-machine-filter').addEventListener('change', () => {
+    const value = $('#equipment-machine-filter').value;
+    if (value) openEquipmentDeviceTimeline(value);
+    else { state.equipmentFocusedRecords = []; state.equipmentFocusedKey = ''; state.equipmentHistoryCursor = ''; state.equipmentActiveCaseId = ''; resetEquipmentVisibleLimit(); renderEquipmentList(); }
+  });
   $('#equipment-customer-filter').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentMachineFilter(); renderEquipmentList(); });
   $('#btn-customer-alias').addEventListener('click', mergeSelectedCustomer);
   $('#equipment-status-filter').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
   $('#equipment-date-from').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
   $('#equipment-date-to').addEventListener('change', () => { resetEquipmentVisibleLimit(); renderEquipmentList(); });
-  $('#btn-equipment-more').addEventListener('click', () => { state.equipmentVisibleLimit += EQUIPMENT_PAGE_SIZE; renderEquipmentList(); });
+  $('#btn-equipment-more').addEventListener('click', async () => {
+    let pair = null; try { pair = JSON.parse($('#equipment-machine-filter').value || ''); } catch (_) { pair = null; }
+    if (pair?.[1] && state.equipmentVisibleLimit >= state.equipmentFocusedRecords.length && state.equipmentHistoryCursor) await loadEquipmentHistory(pair, true);
+    state.equipmentVisibleLimit += EQUIPMENT_PAGE_SIZE;
+    renderEquipmentList();
+  });
   $('#btn-equipment-all').addEventListener('click', showAllEquipment);
+  $('#btn-equipment-append').addEventListener('click', appendEquipmentProgress);
+  $('#equipment-case-switcher').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-equipment-case]');
+    if (button) setEquipmentCase(button.dataset.equipmentCase);
+  });
+  $('#btn-equipment-export').addEventListener('click', exportEquipmentCsv);
+  document.querySelectorAll('[data-equipment-view]').forEach((button) =>
+    button.addEventListener('click', () => setEquipmentView(button.dataset.equipmentView)));
   $('#equipment-customer').addEventListener('input', renderEquipmentFormMachineSuggestions);
+  $('#equipment-status').addEventListener('change', syncEquipmentResolutionFields);
   $('#equipment-linked-kind').addEventListener('change', () => {
     const kind = $('#equipment-linked-kind').value;
     $('#equipment-linked-fields').hidden = !kind;
@@ -2313,6 +2839,7 @@ function init() {
     if (kind && !$('#equipment-linked-content').value) $('#equipment-linked-content').value = `${$('#equipment-machine').value.trim()}：${$('#equipment-description').value.trim()}`;
   });
   setEquipmentNow();
+  syncEquipmentResolutionFields();
   $('#btn-close-equipment-edit').addEventListener('click', closeEquipmentEdit);
   $('#btn-save-equipment-edit').addEventListener('click', saveEquipmentEdit);
   $('#equipment-edit-photo').addEventListener('change', handleEquipmentEditPhoto);
