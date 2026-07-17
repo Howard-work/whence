@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -2906,7 +2906,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.1.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.2.0').catch(() => {});
   }
 
   resetCalendarForm();
