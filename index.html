@@ -449,6 +449,20 @@
       <label class="field-label" for="equipment-edit-description">發生什麼</label><textarea id="equipment-edit-description" rows="3"></textarea>
       <label class="field-label" for="equipment-edit-action">做了什麼</label><textarea id="equipment-edit-action" rows="3"></textarea>
       <label class="field-label" for="equipment-edit-status">目前狀態</label><select id="equipment-edit-status"><option value="recurring">持續發生</option><option value="watching">待觀察</option><option value="waiting_parts">等料件</option><option value="waiting_customer">等客戶</option><option value="waiting_vendor">等原廠</option><option value="resolved">已解決</option><option value="paused">暫停處理</option></select>
+      <details class="equipment-progress-options">
+        <summary>案件與報告欄位 <span>嚴重度、追蹤與處理資訊</span></summary>
+        <div class="equipment-progress-grid">
+          <div><label class="field-label" for="equipment-edit-event-type">事件進度</label><select id="equipment-edit-event-type"><option value="issue">問題發生</option><option value="progress">處理進度</option><option value="diagnosis">診斷</option><option value="repair">維修處置</option><option value="test">測試驗證</option><option value="customer_update">客戶更新</option><option value="closure">結案</option></select></div>
+          <div><label class="field-label" for="equipment-edit-severity">嚴重度</label><select id="equipment-edit-severity"><option value="">未指定</option><option value="low">低</option><option value="normal">一般</option><option value="high">高</option><option value="critical">重大</option></select></div>
+          <div><label class="field-label" for="equipment-edit-follow-up">下次追蹤 <span>選填</span></label><input id="equipment-edit-follow-up" type="datetime-local"></div>
+          <div><label class="field-label" for="equipment-edit-technician">處理人員 <span>選填</span></label><input id="equipment-edit-technician" type="text" autocomplete="name"></div>
+        </div>
+        <div id="equipment-edit-resolution-fields" class="equipment-resolution-fields" hidden>
+          <label class="field-label" for="equipment-edit-root-cause">根本原因 <span>選填</span></label><textarea id="equipment-edit-root-cause" rows="2"></textarea>
+          <label class="field-label" for="equipment-edit-resolution-summary">結案摘要 <span>選填</span></label><textarea id="equipment-edit-resolution-summary" rows="2"></textarea>
+          <label class="field-label" for="equipment-edit-downtime">停機分鐘 <span>選填</span></label><input id="equipment-edit-downtime" type="number" min="0" inputmode="numeric">
+        </div>
+      </details>
       <label class="field-label" for="equipment-edit-tags">標籤</label><input id="equipment-edit-tags" type="text">
       <label class="field-label" for="equipment-edit-occurred">發生時間</label><input id="equipment-edit-occurred" type="datetime-local">
       <div class="edit-photo-field"><input id="equipment-edit-photo" class="sr-only" type="file" accept="image/*"><label class="photo-picker" for="equipment-edit-photo">新增／更換照片</label><button type="button" id="btn-remove-equipment-edit-photo" class="secondary-btn danger-text" hidden>移除照片</button></div>

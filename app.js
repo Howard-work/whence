@@ -653,10 +653,10 @@ function renderTodayTaskBoard(data) {
 }
 
 const TASK_QUADRANTS = [
-  { id: 'important-urgent', important: true, urgent: true, label: '立即處理', meta: '重要 × 緊急', tone: 'do' },
   { id: 'important-not-urgent', important: true, urgent: false, label: '安排時間', meta: '重要 × 不緊急', tone: 'plan' },
-  { id: 'not-important-urgent', important: false, urgent: true, label: '快速處理', meta: '不重要 × 緊急', tone: 'quick' },
+  { id: 'important-urgent', important: true, urgent: true, label: '立即處理', meta: '重要 × 緊急', tone: 'do' },
   { id: 'not-important-not-urgent', important: false, urgent: false, label: '稍後處理', meta: '不重要 × 不緊急', tone: 'later' },
+  { id: 'not-important-urgent', important: false, urgent: true, label: '快速處理', meta: '不重要 × 緊急', tone: 'quick' },
 ];
 
 function taskHasFlag(record, field) {
@@ -692,7 +692,7 @@ function renderTaskMatrix(rows) {
       <div class="eisenhower-title-copy"><p class="eyebrow">Eisenhower Matrix</p><h3 id="eisenhower-title">艾森豪矩陣</h3><p>點選方格查看詳細待辦</p></div>
     </div>
     <div class="eisenhower-axis axis-top" aria-hidden="true">緊急程度 →</div>
-    <div class="eisenhower-frame"><div class="eisenhower-axis axis-side" aria-hidden="true">重要程度</div><div class="eisenhower-grid">${cells}</div></div>
+    <div class="eisenhower-frame"><div class="eisenhower-axis axis-side" aria-hidden="true">↑ 重要程度</div><div class="eisenhower-grid">${cells}</div></div>
   </section>`;
 }
 
@@ -1655,13 +1655,18 @@ function renderEquipmentOverview(customer = '') {
     const followUpText = followUpTime ? `追蹤 ${fmtDate(latest.follow_up_at)}` : '';
     const followUpOverdue = followUpTime && followUpTime < Date.now() && equipmentIsOpen(latest);
     const pair = escapeHtml(JSON.stringify([device.customer, device.machine]));
-    return `<button type="button" class="equipment-device-card status-${status.tone}" data-equipment-device="${pair}" aria-label="查看 ${escapeHtml(device.machine)} 的完整脈絡">
-      <div class="equipment-device-card-top"><span class="equipment-customer-label">${escapeHtml(device.customer || '未指定客戶')}</span><div class="equipment-card-badges">${latest.severity ? `<span class="equipment-severity severity-${escapeHtml(latest.severity)}">${escapeHtml(EQUIPMENT_SEVERITY_LABELS[latest.severity] || latest.severity)}</span>` : ''}<div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>
-      <h3>${escapeHtml(device.machine)}</h3>
-      <p>${escapeHtml(latest.description || '尚未填寫問題描述')}</p>
-      ${latest.action_taken ? `<div class="equipment-latest-action"><span>最近處理</span>${escapeHtml(latest.action_taken)}</div>` : ''}
-      <div class="equipment-device-card-foot"><span>${Number(latest.open_case_count) > 1 ? `${Number(latest.open_case_count)} 個未結案件` : `${device.recordCount} 筆歷程`}</span>${followUpText ? `<time class="${followUpOverdue ? 'overdue' : ''}">${escapeHtml(followUpText)}</time>` : `<time class="${ageDays >= 7 && equipmentIsOpen(latest) ? 'stale' : ''}">${ageText}</time>`}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
-    </button>`;
+    const customerControl = device.customer
+      ? `<button type="button" class="equipment-customer-label" data-equipment-customer="${escapeHtml(device.customer)}" aria-label="查看 ${escapeHtml(device.customer)} 名下全部設備">${escapeHtml(device.customer)}</button>`
+      : '<span class="equipment-customer-label">未指定客戶</span>';
+    return `<article class="equipment-device-card status-${status.tone}">
+      <div class="equipment-device-card-top">${customerControl}<div class="equipment-card-badges">${latest.severity ? `<span class="equipment-severity severity-${escapeHtml(latest.severity)}">${escapeHtml(EQUIPMENT_SEVERITY_LABELS[latest.severity] || latest.severity)}</span>` : ''}<div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div></div>
+      <button type="button" class="equipment-device-open" data-equipment-device="${pair}" aria-label="查看 ${escapeHtml(device.machine)} 的完整脈絡">
+        <h3>${escapeHtml(device.machine)}</h3>
+        <p>${escapeHtml(latest.description || '尚未填寫問題描述')}</p>
+        ${latest.action_taken ? `<div class="equipment-latest-action"><span>最近處理</span>${escapeHtml(latest.action_taken)}</div>` : ''}
+        <div class="equipment-device-card-foot"><span>${Number(latest.open_case_count) > 1 ? `${Number(latest.open_case_count)} 個未結案件` : `${device.recordCount} 筆歷程`}</span>${followUpText ? `<time class="${followUpOverdue ? 'overdue' : ''}">${escapeHtml(followUpText)}</time>` : `<time class="${ageDays >= 7 && equipmentIsOpen(latest) ? 'stale' : ''}">${ageText}</time>`}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>
+      </button>
+    </article>`;
   }).join('');
 }
 
@@ -2183,6 +2188,29 @@ function syncEquipmentResolutionFields() {
   else if ($('#equipment-event-type').value === 'closure') $('#equipment-event-type').value = state.equipmentAppendContext ? 'progress' : 'issue';
 }
 
+function resetEquipmentCaptureForm() {
+  state.equipmentAppendContext = null;
+  [
+    '#equipment-customer', '#equipment-machine', '#equipment-description', '#equipment-action',
+    '#equipment-tags', '#equipment-follow-up', '#equipment-technician', '#equipment-root-cause',
+    '#equipment-resolution-summary', '#equipment-downtime', '#equipment-linked-content', '#equipment-linked-due',
+  ].forEach((selector) => { $(selector).value = ''; });
+  $('#equipment-status').value = 'recurring';
+  $('#equipment-event-type').value = 'issue';
+  $('#equipment-severity').value = '';
+  $('#equipment-linked-kind').value = '';
+  $('#equipment-linked-fields').hidden = true;
+  $('#equipment-linked-task-due').hidden = true;
+  state.equipmentAttachment = null;
+  $('#equipment-photo-input').value = '';
+  $('#equipment-photo-status').textContent = '';
+  $('#equipment-capture-title').textContent = '新增設備案件';
+  $('#equipment-capture-hint').textContent = '建立新問題；後續處理請從設備內追加';
+  syncEquipmentResolutionFields();
+  renderEquipmentFormMachineSuggestions();
+  setEquipmentNow();
+}
+
 async function exportEquipmentCsv() {
   const button = $('#btn-equipment-export');
   let pair = null;
@@ -2255,21 +2283,10 @@ async function saveEquipment() {
   button.disabled = true; button.textContent = '儲存中…';
   try {
     await apiPost('equipment_create', data);
-    ['#equipment-description', '#equipment-action', '#equipment-tags', '#equipment-follow-up', '#equipment-root-cause', '#equipment-resolution-summary', '#equipment-downtime'].forEach((selector) => { $(selector).value = ''; });
-    state.equipmentAttachment = null;
-    $('#equipment-photo-input').value = '';
-    $('#equipment-photo-status').textContent = '';
-    $('#equipment-linked-kind').value = '';
-    $('#equipment-linked-fields').hidden = true;
-    state.equipmentAppendContext = null;
+    resetEquipmentCaptureForm();
     state.equipmentFocusedRecords = [];
     state.equipmentFocusedKey = '';
     state.equipmentHistoryCursor = '';
-    $('#equipment-capture-title').textContent = '新增設備案件';
-    $('#equipment-capture-hint').textContent = '建立新問題；後續處理請從設備內追加';
-    $('#equipment-event-type').value = 'issue';
-    syncEquipmentResolutionFields();
-    setEquipmentNow();
     toast('設備紀錄已儲存');
     await loadEquipment();
   } catch (err) { toast(`儲存失敗：${err.message}`); }
@@ -2296,7 +2313,8 @@ function renderEquipmentEditPhoto() {
 }
 
 function openEquipmentEdit(id) {
-  const r = state.equipmentRecords.find((item) => item.id === id);
+  const r = state.equipmentFocusedRecords.find((item) => item.id === id)
+    || state.equipmentRecords.find((item) => item.id === id);
   if (!r) return;
   state.equipmentEditingId = id; state.equipmentEditAttachment = null; state.equipmentEditRemoveAttachment = false;
   state.equipmentEditHadAttachment = parseAttachments(r.attachments).length > 0;
@@ -2305,10 +2323,18 @@ function openEquipmentEdit(id) {
   $('#equipment-edit-description').value = r.description || '';
   $('#equipment-edit-action').value = r.action_taken || '';
   $('#equipment-edit-status').value = r.status === 'active' ? 'recurring' : (r.status || 'recurring');
+  $('#equipment-edit-event-type').value = r.event_type || (r.status === 'resolved' ? 'closure' : 'progress');
+  $('#equipment-edit-severity').value = r.severity || '';
+  $('#equipment-edit-follow-up').value = toLocalDateTime(r.follow_up_at);
+  $('#equipment-edit-technician').value = r.technician || '';
+  $('#equipment-edit-root-cause').value = r.root_cause || '';
+  $('#equipment-edit-resolution-summary').value = r.resolution_summary || '';
+  $('#equipment-edit-downtime').value = r.downtime_minutes ?? '';
   $('#equipment-edit-tags').value = r.tags || '';
   $('#equipment-edit-occurred').value = toLocalDateTime(r.occurred_at || r.created_at);
   $('#equipment-edit-photo').value = '';
   renderEquipmentEditPhoto();
+  syncEquipmentEditResolutionFields();
   $('#equipment-edit-modal').hidden = false;
 }
 
@@ -2320,10 +2346,34 @@ async function handleEquipmentEditPhoto(event) {
   catch (err) { toast(err.message); }
 }
 
+function syncEquipmentEditResolutionFields() {
+  const resolved = $('#equipment-edit-status').value === 'resolved';
+  $('#equipment-edit-resolution-fields').hidden = !resolved;
+  if (resolved) $('#equipment-edit-event-type').value = 'closure';
+  else if ($('#equipment-edit-event-type').value === 'closure') $('#equipment-edit-event-type').value = 'progress';
+}
+
 async function saveEquipmentEdit() {
   const occurredValue = $('#equipment-edit-occurred').value;
   if (!occurredValue || isNaN(new Date(occurredValue))) { toast('請填寫發生時間'); return; }
-  const data = { id: state.equipmentEditingId, customer: $('#equipment-edit-customer').value, machine: $('#equipment-edit-machine').value, description: $('#equipment-edit-description').value, action_taken: $('#equipment-edit-action').value, status: $('#equipment-edit-status').value, tags: $('#equipment-edit-tags').value, occurred_at: new Date(occurredValue).toISOString() };
+  const followUpValue = $('#equipment-edit-follow-up').value;
+  const data = {
+    id: state.equipmentEditingId,
+    customer: $('#equipment-edit-customer').value,
+    machine: $('#equipment-edit-machine').value,
+    description: $('#equipment-edit-description').value,
+    action_taken: $('#equipment-edit-action').value,
+    status: $('#equipment-edit-status').value,
+    event_type: $('#equipment-edit-event-type').value,
+    severity: $('#equipment-edit-severity').value,
+    follow_up_at: followUpValue ? new Date(followUpValue).toISOString() : '',
+    technician: $('#equipment-edit-technician').value,
+    root_cause: $('#equipment-edit-root-cause').value,
+    resolution_summary: $('#equipment-edit-resolution-summary').value,
+    downtime_minutes: $('#equipment-edit-downtime').value,
+    tags: $('#equipment-edit-tags').value,
+    occurred_at: new Date(occurredValue).toISOString(),
+  };
   if (state.equipmentEditAttachment) data.attachment = { data: state.equipmentEditAttachment.data, mime_type: state.equipmentEditAttachment.mime_type };
   if (state.equipmentEditRemoveAttachment) data.remove_attachment = true;
   try { await apiPost('equipment_update', data); closeEquipmentEdit(); toast('設備紀錄已更新'); await loadEquipment(); }
@@ -2832,6 +2882,7 @@ function init() {
     button.addEventListener('click', () => setEquipmentView(button.dataset.equipmentView)));
   $('#equipment-customer').addEventListener('input', renderEquipmentFormMachineSuggestions);
   $('#equipment-status').addEventListener('change', syncEquipmentResolutionFields);
+  $('#equipment-edit-status').addEventListener('change', syncEquipmentEditResolutionFields);
   $('#equipment-linked-kind').addEventListener('change', () => {
     const kind = $('#equipment-linked-kind').value;
     $('#equipment-linked-fields').hidden = !kind;

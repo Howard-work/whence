@@ -525,7 +525,7 @@ textarea {
 .eisenhower-axis { color: var(--subtle); font-size: 10px; font-weight: 750; letter-spacing: .08em; }
 .eisenhower-axis.axis-top { margin: 0 4px 5px 27px; text-align: center; }
 .eisenhower-frame { display: grid; grid-template-columns: 19px minmax(0, 1fr); gap: 6px; }
-.eisenhower-axis.axis-side { display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; transform: rotate(180deg); }
+.eisenhower-axis.axis-side { display: flex; align-items: center; justify-content: center; writing-mode: vertical-rl; }
 .eisenhower-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .eisenhower-cell { position: relative; display: flex; min-width: 0; min-height: 148px; padding: 15px 12px 13px; overflow: hidden; border: 1px solid var(--border-soft); border-radius: 15px; background: var(--surface); color: var(--text); text-align: left; flex-direction: column; align-items: flex-start; transition: border-color 160ms ease, background-color 160ms ease, transform 100ms ease; }
 .eisenhower-cell::after { position: absolute; right: -22px; bottom: -34px; width: 86px; height: 86px; border: 1px solid currentColor; border-radius: 50%; opacity: .1; content: ''; }
@@ -848,15 +848,18 @@ textarea {
 .equipment-device-card.status-watching::before { background: #e6c451; }
 .equipment-device-card.status-resolved::before { background: #67c96f; }
 .equipment-device-card:hover { border-color: rgba(149, 212, 123, .32); background: var(--surface-raised); }
-.equipment-device-card:active { transform: scale(.992); }
+.equipment-device-open { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.equipment-device-open:active { opacity: .82; }
+.equipment-device-open:focus-visible, .equipment-customer-label:focus-visible { outline: 2px solid var(--equipment); outline-offset: 3px; }
 .equipment-device-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .equipment-card-badges { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .equipment-severity { padding: 4px 7px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--muted); font-size: 10px; font-weight: 750; }
 .equipment-severity.severity-high { border-color: rgba(238, 154, 74, .42); color: #efa86c; }
 .equipment-severity.severity-critical { border-color: rgba(239, 101, 116, .48); background: rgba(239, 101, 116, .08); color: #f27d89; }
-.equipment-customer-label { min-width: 0; overflow: hidden; color: var(--equipment); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.equipment-customer-label { min-width: 44px; min-height: 44px; margin: -10px 0 -10px -10px; padding: 10px; overflow: hidden; border: 0; border-radius: 9px; background: transparent; color: var(--equipment); font-size: 12px; font-weight: 700; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.equipment-customer-label:not(button) { display: inline-flex; align-items: center; cursor: default; }
 .equipment-device-card h3 { margin: 8px 0 5px; color: var(--text); font-family: "Songti TC", "Noto Serif TC", "PMingLiU", serif; font-size: 19px; letter-spacing: .025em; }
-.equipment-device-card > p { display: -webkit-box; margin: 0; overflow: hidden; color: var(--muted); font-size: 14px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.equipment-device-open > p { display: -webkit-box; margin: 0; overflow: hidden; color: var(--muted); font-size: 14px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .equipment-latest-action { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, .025); color: var(--muted); font-size: 12px; line-height: 1.5; }
 .equipment-latest-action span { margin-right: 7px; color: var(--equipment); font-weight: 750; }
 .equipment-device-card-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft); color: var(--subtle); font-size: 11px; font-variant-numeric: tabular-nums; }
