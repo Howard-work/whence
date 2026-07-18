@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=1.3.3">
+  <link rel="stylesheet" href="./style.css?v=1.3.4">
 </head>
 <body data-screen="records">
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -316,7 +316,7 @@
         <label class="field-label" for="calendar-notes">備註 <span>選填</span></label><textarea id="calendar-notes" rows="2"></textarea>
         <label class="field-label" for="calendar-reminder">提前提醒</label><select id="calendar-reminder"><option value="0">不提醒</option><option value="10">10 分鐘</option><option value="30" selected>30 分鐘</option><option value="60">1 小時</option><option value="1440">1 天</option></select>
         <input id="calendar-linked-task" type="hidden">
-        <div class="form-actions"><button type="button" id="btn-save-calendar" class="save-btn">儲存行程</button><button type="button" id="btn-cancel-calendar-edit" class="secondary-btn" hidden>取消編輯</button></div>
+        <div class="form-actions"><button type="button" id="btn-save-calendar" class="save-btn">儲存行程</button><button type="button" id="btn-cancel-calendar-edit" class="secondary-btn" hidden>取消編輯</button><button type="button" id="btn-delete-calendar" class="secondary-btn danger-text" hidden>刪除行程</button></div>
       </section>
       <section id="calendar-list-filter" class="filter-bar" aria-labelledby="calendar-list-title" hidden><div class="section-heading compact"><div><p class="eyebrow">SCHEDULE</p><h2 id="calendar-list-title">近期行程</h2></div></div><input id="calendar-search" type="search" aria-label="搜尋行程" placeholder="搜尋名稱、地點或備註"></section>
       <section id="calendar-list" aria-busy="false" hidden></section>
@@ -362,7 +362,7 @@
           <pre id="performance-report" tabindex="0" aria-label="效能檢測報告">尚無資料。</pre>
         </div>
       </details>
-      <p id="app-version" class="hint">Whence v1.3.3</p>
+      <p id="app-version" class="hint">Whence v1.3.4</p>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
@@ -529,6 +529,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=1.3.3"></script>
+  <script src="./app.js?v=1.3.4"></script>
 </body>
 </html>

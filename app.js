@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.3.3';
+const APP_VERSION = '1.3.4';
 
 const SHANFANG_COPY = {
   daily: [
@@ -2834,7 +2834,7 @@ function resetCalendarForm() {
   $('#calendar-title-input').value = ''; $('#calendar-location').value = ''; $('#calendar-notes').value = '';
   $('#calendar-all-day').checked = false; $('#calendar-end-wrap').hidden = false; $('#calendar-reminder').value = '30'; $('#calendar-linked-task').value = '';
   $('#calendar-title').textContent = '新增行程';
-  $('#btn-save-calendar').textContent = '儲存行程'; $('#btn-cancel-calendar-edit').hidden = true;
+  $('#btn-save-calendar').textContent = '儲存行程'; $('#btn-cancel-calendar-edit').hidden = true; $('#btn-delete-calendar').hidden = true; $('#btn-delete-calendar').disabled = false;
   setCalendarDefaults();
 }
 
@@ -2866,7 +2866,26 @@ function editCalendar(id) {
   $('#calendar-editing-id').value = r.id; $('#calendar-title-input').value = r.title || ''; $('#calendar-location').value = r.location || ''; $('#calendar-notes').value = r.notes || '';
   $('#calendar-all-day').checked = r.all_day === 'Y'; $('#calendar-end-wrap').hidden = r.all_day === 'Y'; $('#calendar-start').value = localDateTimeValue(r.start_time); $('#calendar-end').value = localDateTimeValue(r.end_time); $('#calendar-reminder').value = String(r.reminder_minutes || '0'); $('#calendar-linked-task').value = r.linked_event_id || '';
   $('#calendar-title').textContent = '編輯行程';
-  $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
+  $('#btn-save-calendar').textContent = '更新行程'; $('#btn-cancel-calendar-edit').hidden = false; $('#btn-delete-calendar').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteCalendar(id = $('#calendar-editing-id').value) {
+  const record = state.calendarRecords.find((item) => item.id === id);
+  if (!record || record.read_only) { toast('這筆行程請在 Google 日曆中刪除'); return; }
+  const message = record.linked_event_id ? '刪除這筆行程？Google 行程會刪除，關聯待辦會保留但移除日期。' : '刪除這筆行程？Google Calendar 內的行程也會刪除。';
+  if (!confirm(message)) return;
+  const button = $('#btn-delete-calendar');
+  button.disabled = true;
+  try {
+    await apiPost('calendar_delete', { id });
+    toast('行程已刪除');
+    closeCalendarEdit();
+    await loadCalendar();
+  } catch (error) {
+    toast(`刪除失敗：${error.message}`);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function updateAppBadge() {
@@ -3174,6 +3193,7 @@ function init() {
   $('#calendar-day-list').addEventListener('click', (event) => { const eventButton = event.target.closest('[data-calendar-id]'); if (eventButton) editCalendar(eventButton.dataset.calendarId); });
   $('#btn-save-calendar').addEventListener('click', saveCalendar);
   $('#btn-cancel-calendar-edit').addEventListener('click', closeCalendarEdit);
+  $('#btn-delete-calendar').addEventListener('click', () => deleteCalendar());
   $('#calendar-search').addEventListener('input', renderCalendarList);
   $('#calendar-list').addEventListener('click', (event) => {
     const item = event.target.closest('.calendar-item'); if (!item) return;
@@ -3181,11 +3201,7 @@ function init() {
     const id = item.dataset.id;
     if (!control) { editCalendar(id); return; }
     if (control.dataset.calendarAct === 'edit') editCalendar(id);
-    if (control.dataset.calendarAct === 'delete') {
-      const record = state.calendarRecords.find((item) => item.id === id);
-      const message = record?.linked_event_id ? '刪除這筆行程？Google 行程會刪除，關聯待辦會保留但移除日期。' : '刪除這筆行程？Google Calendar 內的行程也會刪除。';
-      if (confirm(message)) apiPost('calendar_delete', { id }).then(() => { toast('行程已刪除'); return loadCalendar(); }).catch((err) => toast(err.message));
-    }
+    if (control.dataset.calendarAct === 'delete') deleteCalendar(id);
   });
 
   $('#settings-modal').addEventListener('click', (e) => {
@@ -3209,7 +3225,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.3.3').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.3.4').catch(() => {});
   }
 
   resetCalendarForm();
