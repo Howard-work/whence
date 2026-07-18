@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=1.3.5">
+  <link rel="stylesheet" href="./style.css?v=1.3.6">
 </head>
 <body data-screen="records">
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -350,6 +350,16 @@
       <button type="button" id="btn-save-secret" class="save-btn">儲存並測試連線</button>
       <button type="button" id="btn-enable-notifications" class="secondary-btn">啟用通知紅點</button>
       <button type="button" id="btn-open-trash" class="secondary-btn">最近刪除</button>
+      <details id="system-health" class="system-health">
+        <summary>系統健康檢查 <span id="system-health-summary" data-status="idle">尚未檢查</span></summary>
+        <div class="system-health-body">
+          <p>唯讀檢查連線、版本、每日備份與晨報排程；不會建立、刪除或修改任何資料。</p>
+          <button type="button" id="btn-run-system-health" class="secondary-btn">立即檢查</button>
+          <section id="system-health-results" aria-live="polite" aria-busy="false">
+            <p class="system-health-empty">檢查後會在這裡顯示結果。</p>
+          </section>
+        </div>
+      </details>
       <details id="performance-debug" class="performance-debug">
         <summary>效能檢測 <span id="performance-debug-status">已關閉</span></summary>
         <div class="performance-debug-body">
@@ -362,7 +372,7 @@
           <pre id="performance-report" tabindex="0" aria-label="效能檢測報告">尚無資料。</pre>
         </div>
       </details>
-      <p id="app-version" class="hint">Whence v1.3.5</p>
+      <p id="app-version" class="hint">Whence v1.3.6</p>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
@@ -529,6 +539,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=1.3.5"></script>
+  <script src="./app.js?v=1.3.6"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.3.5';
+const APP_VERSION = '1.3.6';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1540,6 +1540,92 @@ function toggleSecretVisibility() {
   $('#btn-toggle-secret').setAttribute('aria-pressed', String(show));
 }
 
+const SYSTEM_HEALTH_LABELS = {
+  ok: '正常',
+  attention: '待處理',
+  error: '異常',
+  checking: '檢查中',
+  idle: '尚未檢查',
+};
+
+function formatSystemHealthTime(value) {
+  if (!value) return '尚無紀錄';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('zh-TW', { hour12: false });
+}
+
+function renderSystemHealthCard(title, item, details) {
+  const status = SYSTEM_HEALTH_LABELS[item?.status] ? item.status : 'attention';
+  return `<article class="system-health-card" data-status="${status}">
+    <div class="system-health-card-heading"><h3>${escapeHtml(title)}</h3><span class="system-health-badge">${SYSTEM_HEALTH_LABELS[status]}</span></div>
+    <p>${escapeHtml(item?.message || '尚無狀態說明')}</p>
+    <dl>${details.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>
+  </article>`;
+}
+
+function renderSystemHealth(health) {
+  const summary = $('#system-health-summary');
+  const overall = SYSTEM_HEALTH_LABELS[health?.status] ? health.status : 'attention';
+  summary.dataset.status = overall;
+  summary.textContent = SYSTEM_HEALTH_LABELS[overall];
+  const api = health?.api || { status: 'error', message: 'API 未回傳狀態' };
+  const backup = health?.backup || { status: 'error', message: '未取得備份狀態' };
+  const digest = health?.digest || { status: 'error', message: '未取得晨報狀態' };
+  $('#system-health-results').innerHTML = [
+    renderSystemHealthCard('連線與版本', api, [
+      ['PWA', `v${APP_VERSION}`],
+      ['GAS', health?.gas_version || '未知'],
+      ['時區', health?.timezone || '未知'],
+      ['檢查時間', formatSystemHealthTime(health?.checked_at)],
+    ]),
+    renderSystemHealthCard('每日備份', backup, [
+      ['觸發器', backup.trigger_count === 1 ? '已啟用' : backup.trigger_count > 1 ? `${backup.trigger_count} 個，需整理` : '未啟用'],
+      ['排程', backup.schedule || '每日約 03:00'],
+      ['最近備份', formatSystemHealthTime(backup.last_backup_at || backup.last_success_at)],
+      ['保留檔案', `${Number(backup.backup_count || 0)} 份`],
+    ]),
+    renderSystemHealthCard('每日晨報', digest, [
+      ['觸發器', digest.trigger_count === 1 ? '已啟用' : digest.trigger_count > 1 ? `${digest.trigger_count} 個，需整理` : '未啟用'],
+      ['排程', digest.schedule || '每日約 06:30–07:00'],
+      ['最近執行', formatSystemHealthTime(digest.last_run_at)],
+      ['最近成功', formatSystemHealthTime(digest.last_success_at)],
+    ]),
+  ].join('');
+}
+
+function renderSystemHealthError(error) {
+  const summary = $('#system-health-summary');
+  summary.dataset.status = 'error';
+  summary.textContent = SYSTEM_HEALTH_LABELS.error;
+  $('#system-health-results').innerHTML = `<article class="system-health-card" data-status="error"><div class="system-health-card-heading"><h3>無法完成檢查</h3><span class="system-health-badge">異常</span></div><p>${escapeHtml(error?.message || '請檢查網路與 SECRET 後再試')}</p></article>`;
+}
+
+async function runSystemHealth() {
+  const button = $('#btn-run-system-health');
+  const results = $('#system-health-results');
+  const summary = $('#system-health-summary');
+  if (!getSecret()) {
+    renderSystemHealthError(new Error('請先輸入並儲存 API Secret'));
+    return;
+  }
+  button.disabled = true;
+  button.textContent = '檢查中…';
+  results.setAttribute('aria-busy', 'true');
+  summary.dataset.status = 'checking';
+  summary.textContent = SYSTEM_HEALTH_LABELS.checking;
+  results.innerHTML = '<p class="system-health-empty">正在讀取系統狀態…</p>';
+  try {
+    renderSystemHealth(await apiRead('system_health'));
+  } catch (error) {
+    renderSystemHealthError(error);
+  } finally {
+    button.disabled = false;
+    button.textContent = '重新檢查';
+    results.setAttribute('aria-busy', 'false');
+  }
+}
+
 async function saveSecret() {
   const s = $('#secret-input').value.trim();
   if (!s) { $('#settings-hint').textContent = '請輸入 SECRET'; return; }
@@ -3051,6 +3137,7 @@ function init() {
   $('#btn-settings').addEventListener('click', () => openSettings());
   $('#btn-close-settings').addEventListener('click', closeSettings);
   $('#btn-toggle-secret').addEventListener('click', toggleSecretVisibility);
+  $('#btn-run-system-health').addEventListener('click', runSystemHealth);
   $('#performance-debug-toggle').addEventListener('change', (event) => setPerformanceDebug(event.target.checked));
   $('#btn-copy-performance').addEventListener('click', copyPerformanceReport);
   $('#btn-clear-performance').addEventListener('click', clearPerformanceReport);
@@ -3233,7 +3320,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.3.5').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.3.6').catch(() => {});
   }
 
   resetCalendarForm();
