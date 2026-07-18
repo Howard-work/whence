@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 
 const SHANFANG_COPY = {
   daily: [
@@ -84,6 +84,10 @@ const state = {
   equipmentHistoryTotal: 0,
   equipmentActiveCaseId: '',
   equipmentAppendContext: null,
+  equipmentReportPair: null,
+  equipmentReportData: null,
+  equipmentReportPhotos: new Map(),
+  equipmentReportReturnFocus: null,
   activeScreen: 'records',
   notebookSpace: '',
   notebookTag: '',
@@ -1769,6 +1773,7 @@ function equipmentContextText(label, total, visible) {
 function renderEquipmentFocus(customer, pair) {
   const focus = $('#equipment-focus');
   $('#btn-equipment-append').hidden = !pair;
+  $('#btn-equipment-report').hidden = !pair;
   if (!customer && !pair) { focus.hidden = true; return; }
   focus.hidden = false;
   if (pair) {
@@ -2247,6 +2252,207 @@ function resetEquipmentCaptureForm() {
   syncEquipmentResolutionFields();
   renderEquipmentFormMachineSuggestions();
   setEquipmentNow();
+}
+
+function equipmentReportDate(value, includeTime = true) {
+  if (!value) return '未指定';
+  const date = new Date(value);
+  if (isNaN(date)) return String(value);
+  const pad = (number) => String(number).padStart(2, '0');
+  const day = `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+  return includeTime ? `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}` : day;
+}
+
+function equipmentReportMinutes(value) {
+  const minutes = Math.max(0, Number(value) || 0);
+  if (!minutes) return '0 分鐘';
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours ? `${hours} 小時${rest ? ` ${rest} 分` : ''}` : `${rest} 分鐘`;
+}
+
+function equipmentReportMissingFields(items) {
+  if (!items.length) return [];
+  const latest = items[0];
+  const resolved = items.filter((item) => item.status === 'resolved');
+  const missing = [];
+  if (!String(latest.severity || '').trim()) missing.push('嚴重度');
+  if (!items.some((item) => String(item.technician || '').trim())) missing.push('處理人員');
+  if (latest.status !== 'resolved' && !latest.follow_up_at) missing.push('下次追蹤');
+  if (resolved.some((item) => !String(item.root_cause || '').trim())) missing.push('根本原因');
+  if (resolved.some((item) => !String(item.resolution_summary || '').trim())) missing.push('結案摘要');
+  return missing;
+}
+
+function equipmentReportSelectedItems() {
+  const items = state.equipmentReportData?.items || [];
+  const caseId = $('#equipment-report-case').value;
+  return caseId ? items.filter((item) => (String(item.case_id || '').trim() || '__legacy__') === caseId) : items;
+}
+
+async function ensureEquipmentReportPhotos(items) {
+  if (!$('#equipment-report-photos').checked) return;
+  const attachments = [];
+  items.forEach((item) => parseAttachments(item.attachments).forEach((attachment) => {
+    const fileId = String(attachment.file_id || '').trim();
+    if (fileId && !attachments.some((entry) => entry.fileId === fileId)) attachments.push({ fileId, name: attachment.name || '現場照片' });
+  }));
+  await Promise.all(attachments.slice(0, 12).map(async (attachment) => {
+    if (state.equipmentReportPhotos.has(attachment.fileId)) return;
+    state.equipmentReportPhotos.set(attachment.fileId, { loading: true, name: attachment.name });
+    try {
+      const result = await apiRead('equipment_attachment', { file_id: attachment.fileId });
+      state.equipmentReportPhotos.set(attachment.fileId, { name: result.name || attachment.name, src: `data:${result.mime_type};base64,${result.data}` });
+    } catch (error) {
+      state.equipmentReportPhotos.set(attachment.fileId, { name: attachment.name, error: error.message || '照片載入失敗' });
+    }
+  }));
+}
+
+function equipmentReportPhotoMarkup(item) {
+  if (!$('#equipment-report-photos').checked) return '';
+  const attachments = parseAttachments(item.attachments).filter((attachment) => state.equipmentReportPhotos.has(String(attachment.file_id || '').trim()));
+  if (!attachments.length) return '';
+  return `<div class="equipment-report-photos">${attachments.slice(0, 12).map((attachment) => {
+    const fileId = String(attachment.file_id || '').trim();
+    const photo = state.equipmentReportPhotos.get(fileId);
+    if (!photo?.src) return `<div class="equipment-report-photo-error">${escapeHtml(photo?.error || '照片未載入')}</div>`;
+    return `<figure class="equipment-report-photo"><img src="${photo.src}" alt="${escapeHtml(item.machine || '設備')}於${escapeHtml(equipmentReportDate(item.occurred_at || item.created_at))}的現場照片"><figcaption>${escapeHtml(photo.name || '現場照片')}</figcaption></figure>`;
+  }).join('')}</div>`;
+}
+
+function equipmentReportEntryMarkup(item) {
+  const status = EQUIPMENT_STATUS[item.status] || EQUIPMENT_STATUS.recurring;
+  const eventLabel = EQUIPMENT_EVENT_LABELS[item.event_type] || '設備紀錄';
+  const severity = EQUIPMENT_SEVERITY_LABELS[item.severity] || '';
+  const notes = [
+    item.root_cause ? `<p><strong>根本原因</strong> ${escapeHtml(item.root_cause)}</p>` : '',
+    item.resolution_summary ? `<p><strong>結案摘要</strong> ${escapeHtml(item.resolution_summary)}</p>` : '',
+    item.follow_up_at ? `<p><strong>下次追蹤</strong> ${escapeHtml(equipmentReportDate(item.follow_up_at))}</p>` : '',
+    item.technician ? `<p><strong>處理人員</strong> ${escapeHtml(item.technician)}</p>` : '',
+    Number(item.downtime_minutes) ? `<p><strong>停機時間</strong> ${escapeHtml(equipmentReportMinutes(item.downtime_minutes))}</p>` : '',
+  ].filter(Boolean).join('');
+  return `<section class="equipment-report-entry">
+    <div class="equipment-report-entry-head"><time>${escapeHtml(equipmentReportDate(item.occurred_at || item.created_at))}</time><div class="equipment-report-entry-badges"><span>${escapeHtml(eventLabel)}</span><span>${escapeHtml(status.label)}</span>${severity ? `<span>嚴重度 ${escapeHtml(severity)}</span>` : ''}</div></div>
+    <h3>${escapeHtml(item.description || '未填寫問題描述')}</h3>
+    ${item.action_taken ? `<p><strong>處理內容</strong> ${escapeHtml(item.action_taken)}</p>` : '<p><strong>處理內容</strong> 未填寫</p>'}
+    ${item.tags ? `<p><strong>標籤</strong> ${escapeHtml(item.tags)}</p>` : ''}
+    ${notes ? `<div class="equipment-report-notes">${notes}</div>` : ''}
+    ${equipmentReportPhotoMarkup(item)}
+  </section>`;
+}
+
+function equipmentReportMarkup(report, items) {
+  const latest = items[0];
+  if (!latest) return '<div class="empty"><strong>這個範圍沒有設備紀錄</strong><span>請調整日期或案件範圍。</span></div>';
+  const status = EQUIPMENT_STATUS[latest.status] || EQUIPMENT_STATUS.recurring;
+  const severity = EQUIPMENT_SEVERITY_LABELS[latest.severity] || '未指定';
+  const missing = equipmentReportMissingFields(items);
+  const downtime = items.reduce((sum, item) => sum + Math.max(0, Number(item.downtime_minutes) || 0), 0);
+  const attachmentCount = items.reduce((sum, item) => sum + parseAttachments(item.attachments).length, 0);
+  const caseCount = new Set(items.map((item) => String(item.case_id || '').trim() || '__legacy__')).size;
+  const oldest = items[items.length - 1];
+  const range = `${equipmentReportDate(oldest.occurred_at || oldest.created_at, false)} - ${equipmentReportDate(latest.occurred_at || latest.created_at, false)}`;
+  const selectedCase = $('#equipment-report-case').selectedOptions?.[0]?.textContent || '全部案件';
+  const device = report.device || {};
+  return `<header class="equipment-report-document-head"><div><div class="equipment-report-brand">WHENCE / EQUIPMENT SERVICE REPORT</div><h1>設備維修報告</h1></div><div class="equipment-report-generated">產生日期<br><strong>${escapeHtml(equipmentReportDate(report.generated_at))}</strong></div></header>
+    <section class="equipment-report-device"><div><span class="equipment-report-brand">${escapeHtml(device.customer || '未指定客戶')}</span><h2>${escapeHtml(device.machine || '未命名設備')}</h2><p>報告期間 ${escapeHtml(range)} · ${escapeHtml(selectedCase)}</p></div><div class="equipment-report-id"><strong>設備識別碼</strong><span>${escapeHtml(device.device_id || '舊資料，尚無識別碼')}</span></div></section>
+    <section class="equipment-report-metrics" aria-label="設備報告摘要"><div class="equipment-report-metric"><span>期間最新狀態</span><strong>${escapeHtml(status.label)}</strong></div><div class="equipment-report-metric"><span>嚴重程度</span><strong>${escapeHtml(severity)}</strong></div><div class="equipment-report-metric"><span>處理歷程</span><strong>${items.length} 筆</strong></div><div class="equipment-report-metric"><span>停機時間</span><strong>${escapeHtml(equipmentReportMinutes(downtime))}</strong></div></section>
+    ${missing.length ? `<aside class="equipment-report-warning"><strong>資料完整性提醒</strong>以下欄位尚未完整填寫：${escapeHtml(missing.join('、'))}。報告保留空白，不自動推論。</aside>` : ''}
+    ${$('#equipment-report-photos').checked && attachmentCount > 12 ? `<aside class="equipment-report-info"><strong>照片數量提醒</strong>共有 ${attachmentCount} 張現場照片；為避免手機記憶體不足，本次報告載入最新 12 張。</aside>` : ''}
+    <section class="equipment-report-section"><h2 class="equipment-report-section-title">目前摘要 <small>${caseCount} 個案件脈絡</small></h2><div class="equipment-report-current"><p><span>最近問題</span><br>${escapeHtml(latest.description || '未填寫')}</p><p><span>最近處理</span><br>${escapeHtml(latest.action_taken || '未填寫')}</p>${latest.follow_up_at ? `<p><span>下次追蹤</span><br>${escapeHtml(equipmentReportDate(latest.follow_up_at))}</p>` : ''}</div></section>
+    <section class="equipment-report-section"><h2 class="equipment-report-section-title">處理歷程 <small>新到舊，共 ${items.length} 筆</small></h2><div class="equipment-report-timeline">${items.map(equipmentReportEntryMarkup).join('')}</div></section>
+    <footer class="equipment-report-footer">Whence v${escapeHtml(APP_VERSION)} · 本報告依設備紀錄產生，空白欄位未經推論或補寫。</footer>`;
+}
+
+async function renderEquipmentReportPreview() {
+  const report = state.equipmentReportData;
+  if (!report) return;
+  const paper = $('#equipment-report-paper');
+  const items = equipmentReportSelectedItems();
+  paper.setAttribute('aria-busy', 'true');
+  $('#equipment-report-loading').hidden = false;
+  $('#equipment-report-loading').textContent = $('#equipment-report-photos').checked ? '正在載入報告與現場照片…' : '正在整理報告…';
+  await ensureEquipmentReportPhotos(items);
+  paper.innerHTML = equipmentReportMarkup(report, items);
+  paper.setAttribute('aria-busy', 'false');
+  $('#equipment-report-loading').hidden = true;
+  $('#btn-print-equipment-report').disabled = !items.length;
+}
+
+function renderEquipmentReportCases(report, preferredCase = '') {
+  const select = $('#equipment-report-case');
+  select.innerHTML = '<option value="">全部案件</option>' + (report.cases || []).map((item) => {
+    const label = item.id === '__legacy__' ? '舊版歷程' : (item.description || `案件 ${item.id.slice(-6)}`);
+    const status = EQUIPMENT_STATUS[item.status] || EQUIPMENT_STATUS.recurring;
+    return `<option value="${escapeHtml(item.id)}">${escapeHtml(label)} · ${status.label} · ${item.count} 筆</option>`;
+  }).join('');
+  if ([...select.options].some((option) => option.value === preferredCase)) select.value = preferredCase;
+}
+
+async function loadEquipmentReport() {
+  const pair = state.equipmentReportPair;
+  if (!pair?.[1]) return;
+  const refresh = $('#btn-refresh-equipment-report');
+  const preferredCase = $('#equipment-report-case').value || state.equipmentActiveCaseId;
+  refresh.disabled = true;
+  $('#btn-print-equipment-report').disabled = true;
+  $('#equipment-report-loading').hidden = false;
+  $('#equipment-report-loading').textContent = '正在整理完整設備歷程…';
+  $('#equipment-report-paper').setAttribute('aria-busy', 'true');
+  try {
+    const report = await apiRead('equipment_report', {
+      device_id: pair[2] || '', customer: pair[0] || '', machine: pair[1],
+      date_from: $('#equipment-report-date-from').value, date_to: $('#equipment-report-date-to').value,
+    });
+    state.equipmentReportData = report;
+    state.equipmentReportPhotos.clear();
+    renderEquipmentReportCases(report, preferredCase);
+    await renderEquipmentReportPreview();
+  } catch (error) {
+    state.equipmentReportData = null;
+    $('#equipment-report-paper').innerHTML = `<div class="empty"><strong>報告無法產生</strong><span>${escapeHtml(error.message || '請稍後再試')}</span></div>`;
+    $('#equipment-report-paper').setAttribute('aria-busy', 'false');
+    $('#equipment-report-loading').hidden = true;
+    toast(`報告產生失敗：${error.message}`);
+  } finally { refresh.disabled = false; }
+}
+
+function openEquipmentReport(event) {
+  let pair = null;
+  try { pair = JSON.parse($('#equipment-machine-filter').value || ''); } catch (_) { pair = null; }
+  if (!pair?.[1]) { toast('請先選擇一台設備'); return; }
+  state.equipmentReportPair = pair;
+  state.equipmentReportReturnFocus = event?.currentTarget || $('#btn-equipment-report');
+  state.equipmentReportData = null;
+  state.equipmentReportPhotos.clear();
+  $('#equipment-report-date-from').value = $('#equipment-date-from').value;
+  $('#equipment-report-date-to').value = $('#equipment-date-to').value;
+  $('#equipment-report-case').innerHTML = '<option value="">全部案件</option>';
+  $('#equipment-report-photos').checked = true;
+  $('#equipment-report-paper').innerHTML = '';
+  $('#equipment-report-modal').hidden = false;
+  $('#btn-close-equipment-report').focus();
+  loadEquipmentReport();
+}
+
+function closeEquipmentReport() {
+  $('#equipment-report-modal').hidden = true;
+  document.body.classList.remove('printing-equipment-report');
+  state.equipmentReportData = null;
+  state.equipmentReportPhotos.clear();
+  $('#equipment-report-paper').innerHTML = '';
+  if (state.equipmentReportReturnFocus) state.equipmentReportReturnFocus.focus();
+  state.equipmentReportReturnFocus = null;
+}
+
+function printEquipmentReport() {
+  if (!state.equipmentReportData || !equipmentReportSelectedItems().length) return;
+  const cleanup = () => document.body.classList.remove('printing-equipment-report');
+  document.body.classList.add('printing-equipment-report');
+  window.addEventListener?.('afterprint', cleanup, { once: true });
+  window.print();
+  setTimeout(cleanup, 10000);
 }
 
 async function exportEquipmentCsv() {
@@ -2916,6 +3122,13 @@ function init() {
     if (button) setEquipmentCase(button.dataset.equipmentCase);
   });
   $('#btn-equipment-export').addEventListener('click', exportEquipmentCsv);
+  $('#btn-equipment-report').addEventListener('click', openEquipmentReport);
+  $('#btn-close-equipment-report').addEventListener('click', closeEquipmentReport);
+  $('#btn-refresh-equipment-report').addEventListener('click', loadEquipmentReport);
+  $('#equipment-report-case').addEventListener('change', renderEquipmentReportPreview);
+  $('#equipment-report-photos').addEventListener('change', renderEquipmentReportPreview);
+  $('#btn-print-equipment-report').addEventListener('click', printEquipmentReport);
+  $('#equipment-report-modal').addEventListener('click', (event) => { if (event.target === $('#equipment-report-modal')) closeEquipmentReport(); });
   document.querySelectorAll('[data-equipment-view]').forEach((button) =>
     button.addEventListener('click', () => setEquipmentView(button.dataset.equipmentView)));
   $('#equipment-customer').addEventListener('input', renderEquipmentFormMachineSuggestions);
@@ -2986,7 +3199,8 @@ function init() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$('#equipment-edit-modal').hidden) closeEquipmentEdit();
+    if (!$('#equipment-report-modal').hidden) closeEquipmentReport();
+    else if (!$('#equipment-edit-modal').hidden) closeEquipmentEdit();
     else if (!$('#trash-modal').hidden) closeTrash();
     else if (!$('#edit-modal').hidden) closeEdit();
     else if (!$('#photo-modal').hidden) closePhotoModal();
@@ -2995,7 +3209,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.2.1').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.3.0').catch(() => {});
   }
 
   resetCalendarForm();

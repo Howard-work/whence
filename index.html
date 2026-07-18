@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="whence">
-  <link rel="stylesheet" href="./style.css?v=1.2.1">
+  <link rel="stylesheet" href="./style.css?v=1.3.0">
 </head>
 <body data-screen="records">
   <a class="skip-link" href="#main-content">跳到主要內容</a>
@@ -219,6 +219,9 @@
         <button type="button" id="btn-equipment-append" class="equipment-append" hidden>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>追加處理進度</span>
         </button>
+        <button type="button" id="btn-equipment-report" class="equipment-report-open" hidden>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7zM15 3v5h5M10 12h6M10 16h6"/></svg><span>產生設備報告</span>
+        </button>
       </section>
       <details id="equipment-search-panel" class="equipment-search-panel">
         <summary><span>搜尋與篩選</span><small id="equipment-filter-state">需要時再展開</small></summary>
@@ -359,7 +362,7 @@
           <pre id="performance-report" tabindex="0" aria-label="效能檢測報告">尚無資料。</pre>
         </div>
       </details>
-      <p id="app-version" class="hint">Whence v1.2.1</p>
+      <p id="app-version" class="hint">Whence v1.3.0</p>
       <p class="hint" id="settings-hint" role="status" aria-live="polite"></p>
     </div>
   </div>
@@ -471,6 +474,29 @@
     </div>
   </div>
 
+  <div id="equipment-report-modal" class="modal equipment-report-modal" role="dialog" aria-modal="true" aria-labelledby="equipment-report-title" hidden>
+    <div class="modal-body equipment-report-shell">
+      <div class="modal-heading equipment-report-heading">
+        <div><p class="eyebrow">SERVICE REPORT</p><h2 id="equipment-report-title">設備維修報告</h2></div>
+        <button type="button" id="btn-close-equipment-report" class="icon-btn quiet" aria-label="關閉設備報告">×</button>
+      </div>
+      <section class="equipment-report-controls" aria-label="設備報告範圍">
+        <div><label class="field-label" for="equipment-report-date-from">開始日期</label><input id="equipment-report-date-from" type="date"></div>
+        <div><label class="field-label" for="equipment-report-date-to">結束日期</label><input id="equipment-report-date-to" type="date"></div>
+        <div><label class="field-label" for="equipment-report-case">案件範圍</label><select id="equipment-report-case"><option value="">全部案件</option></select></div>
+        <label class="equipment-report-photo-option" for="equipment-report-photos"><input id="equipment-report-photos" type="checkbox" checked><span>報告包含現場照片</span></label>
+        <button type="button" id="btn-refresh-equipment-report" class="secondary-btn">更新預覽</button>
+      </section>
+      <p id="equipment-report-loading" class="equipment-report-loading" role="status" aria-live="polite">正在整理完整設備歷程…</p>
+      <article id="equipment-report-paper" class="equipment-report-paper" aria-live="polite" aria-busy="true"></article>
+      <div class="equipment-report-actions">
+        <button type="button" id="btn-print-equipment-report" class="save-btn" disabled>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M7 13h10v8H7z"/></svg><span>列印／另存 PDF</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="photo-modal" class="modal photo-modal" role="dialog" aria-modal="true" aria-labelledby="photo-modal-title" hidden>
     <div class="modal-body card">
       <div class="modal-heading">
@@ -503,6 +529,6 @@
 
   <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-  <script src="./app.js?v=1.2.1"></script>
+  <script src="./app.js?v=1.3.0"></script>
 </body>
 </html>
