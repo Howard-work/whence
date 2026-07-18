@@ -1,13 +1,12 @@
 # Whence Roadmap
 
-## Next
+## Completed
 
-- Optional task-to-calendar update synchronization.
-- Visible app version and update notice.
+- Task-to-calendar synchronization and visible version/update notices.
+- Equipment summaries, case history, date-range export, and stable `device_id` grouping.
 
 ## Later, only after real usage validates the need
 
-- Equipment summaries and date-range exports.
 - Recurring events and trash retention controls.
 - Search/API caching if usage or quota requires it.
 

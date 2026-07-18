@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1576,20 +1576,60 @@ function equipmentRecordTime(record) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function equipmentPairIdentityKey(record) {
+  return JSON.stringify([customerKey(record.customer), String(record.machine || '').trim().toLowerCase()]);
+}
+
+function equipmentIdentityHints(records) {
+  const hints = new Map();
+  records.forEach((record) => {
+    const deviceId = String(record.device_id || '').trim();
+    if (!deviceId) return;
+    const pairKey = equipmentPairIdentityKey(record);
+    if (!hints.has(pairKey)) hints.set(pairKey, new Set());
+    hints.get(pairKey).add(deviceId);
+  });
+  return hints;
+}
+
+function equipmentResolvedDeviceId(record, hints) {
+  const deviceId = String(record.device_id || '').trim();
+  if (deviceId) return deviceId;
+  const ids = [...(hints.get(equipmentPairIdentityKey(record)) || [])];
+  return ids.length === 1 ? ids[0] : '';
+}
+
+function equipmentRecordMatchesDevice(record, pair, records = state.equipmentRecords, hints = null) {
+  if (!pair?.[1]) return false;
+  const pairMatches = customerKey(record.customer) === customerKey(pair[0])
+    && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase();
+  const targetDeviceId = String(pair[2] || '').trim();
+  if (!targetDeviceId) return pairMatches;
+  const recordDeviceId = String(record.device_id || '').trim();
+  if (recordDeviceId) return recordDeviceId === targetDeviceId;
+  const hintedIds = [...((hints || equipmentIdentityHints(records)).get(equipmentPairIdentityKey(record)) || [])];
+  return pairMatches && hintedIds.length === 1 && hintedIds[0] === targetDeviceId;
+}
+
 function equipmentDeviceGroups(records = state.equipmentRecords) {
+  const hints = equipmentIdentityHints(records);
   const groups = new Map();
   records.forEach((record) => {
     const customer = String(record.customer || '').trim();
     const machine = String(record.machine || '').trim();
     if (!machine) return;
-    const key = JSON.stringify([customerKey(customer), machine.toLowerCase()]);
-    if (!groups.has(key)) groups.set(key, { customer, machine, records: [], recordCount: 0 });
+    const deviceId = equipmentResolvedDeviceId(record, hints);
+    const key = deviceId ? `device:${deviceId}` : `legacy:${equipmentPairIdentityKey(record)}`;
+    if (!groups.has(key)) groups.set(key, { customer, machine, device_id: deviceId, records: [], recordCount: 0 });
     groups.get(key).records.push(record);
     groups.get(key).recordCount += Math.max(1, Number(record.record_count) || 1);
   });
   return [...groups.values()].map((device) => {
     device.records.sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a));
     device.latest = device.records[0];
+    device.customer = String(device.latest.customer || '').trim();
+    device.machine = String(device.latest.machine || '').trim();
+    if (!device.device_id) device.device_id = String(device.latest.device_id || '').trim();
     return device;
   });
 }
@@ -1654,7 +1694,7 @@ function renderEquipmentOverview(customer = '') {
     const followUpTime = latest.follow_up_at ? new Date(latest.follow_up_at).getTime() : 0;
     const followUpText = followUpTime ? `追蹤 ${fmtDate(latest.follow_up_at)}` : '';
     const followUpOverdue = followUpTime && followUpTime < Date.now() && equipmentIsOpen(latest);
-    const pair = escapeHtml(JSON.stringify([device.customer, device.machine]));
+    const pair = escapeHtml(JSON.stringify([device.customer, device.machine, device.device_id || '']));
     const customerControl = device.customer
       ? `<button type="button" class="equipment-customer-label" data-equipment-customer="${escapeHtml(device.customer)}" aria-label="查看 ${escapeHtml(device.customer)} 名下全部設備">${escapeHtml(device.customer)}</button>`
       : '<span class="equipment-customer-label">未指定客戶</span>';
@@ -1682,13 +1722,8 @@ function renderEquipmentCustomerFilter() {
 }
 
 function renderEquipmentCurrentSummary(customer) {
-  const latest = new Map();
-  state.equipmentRecords.filter((record) => customerKey(record.customer) === customer).forEach((record) => {
-    const key = String(record.machine || '').trim().toLowerCase();
-    const time = new Date(record.occurred_at || record.created_at).getTime();
-    if (key && (!latest.has(key) || time > latest.get(key).time)) latest.set(key, { record, time });
-  });
-  const rows = [...latest.values()].sort((a, b) => a.record.machine.localeCompare(b.record.machine));
+  const rows = equipmentDeviceGroups(state.equipmentRecords.filter((record) => customerKey(record.customer) === customer))
+    .map((device) => ({ record: device.latest })).sort((a, b) => a.record.machine.localeCompare(b.record.machine));
   $('#equipment-current-summary').hidden = !rows.length;
   $('#equipment-current-summary').innerHTML = rows.length ? '<h3>設備目前狀態</h3>' + rows.map(({ record }) => { const status = EQUIPMENT_STATUS[record.status] || EQUIPMENT_STATUS.recurring; return `<div class="equipment-current-row"><strong>${escapeHtml(record.machine)}</strong><div class="equipment-status-badge status-${status.tone}"><span aria-hidden="true"></span>${status.label}</div></div>`; }).join('') : '';
 }
@@ -1698,15 +1733,13 @@ function renderEquipmentMachineFilter() {
   const statusFilter = $('#equipment-status-filter').value;
   const customer = $('#equipment-customer-filter').value;
   const pairs = new Map();
-  state.equipmentRecords.filter((r) => (!customer || customerKey(r.customer) === customer) && equipmentMatchesKeyword(r, keyword)).forEach((r) => {
-    const customer = String(r.customer || '').trim();
-    const machine = String(r.machine || '').trim();
-    const key = JSON.stringify([customerKey(customer), machine.toLowerCase()]);
-    if (!pairs.has(key)) pairs.set(key, { customer, machine });
+  equipmentDeviceGroups(state.equipmentRecords.filter((r) => (!customer || customerKey(r.customer) === customer) && equipmentMatchesKeyword(r, keyword))).forEach((device) => {
+    const key = device.device_id ? `device:${device.device_id}` : `legacy:${JSON.stringify([customerKey(device.customer), device.machine.toLowerCase()])}`;
+    if (!pairs.has(key)) pairs.set(key, { customer: device.customer, machine: device.machine, device_id: device.device_id || '' });
   });
   const selected = $('#equipment-machine-filter').value;
   $('#equipment-machine-filter').innerHTML = '<option value="">全部設備</option>' + [...pairs.values()].sort((a, b) => `${a.customer}${a.machine}`.localeCompare(`${b.customer}${b.machine}`)).map((pair) => {
-    const value = JSON.stringify([pair.customer, pair.machine]);
+    const value = JSON.stringify([pair.customer, pair.machine, pair.device_id]);
     const label = pair.customer ? `${pair.customer} · ${pair.machine}` : pair.machine;
     return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
   }).join('');
@@ -1740,7 +1773,8 @@ function renderEquipmentFocus(customer, pair) {
   focus.hidden = false;
   if (pair) {
     const focusSource = state.equipmentFocusedKey === equipmentPairKey(pair) && state.equipmentFocusedRecords.length ? state.equipmentFocusedRecords : state.equipmentRecords;
-    const allRows = focusSource.filter((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1] || '').trim().toLowerCase());
+    const focusHints = equipmentIdentityHints(focusSource);
+    const allRows = focusSource.filter((record) => equipmentRecordMatchesDevice(record, pair, focusSource, focusHints));
     const latest = [...allRows].sort((a, b) => new Date(b.occurred_at || b.created_at) - new Date(a.occurred_at || a.created_at))[0];
     const status = latest ? (EQUIPMENT_STATUS[latest.status] || EQUIPMENT_STATUS.recurring) : null;
     $('#equipment-focus-eyebrow').textContent = 'DEVICE CASE';
@@ -1822,23 +1856,25 @@ function openEquipmentCustomerTimeline(label) {
 }
 
 function equipmentPairKey(pair) {
-  return pair?.[1] ? JSON.stringify([customerKey(pair[0]), String(pair[1]).trim().toLowerCase()]) : '';
+  if (!pair?.[1]) return '';
+  return pair[2] ? `device:${String(pair[2]).trim()}` : JSON.stringify([customerKey(pair[0]), String(pair[1]).trim().toLowerCase()]);
 }
 
 async function loadEquipmentHistory(pair, append = false) {
-  const summary = state.equipmentRecords.find((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase());
+  const summary = state.equipmentRecords.find((record) => equipmentRecordMatchesDevice(record, pair));
   const key = equipmentPairKey(pair);
   $('#equipment-list').setAttribute('aria-busy', 'true');
   try {
     let result;
     try {
       result = await apiRead('equipment_history', {
-        device_id: summary?.device_id || '', customer: pair[0] || '', machine: pair[1],
+        device_id: pair[2] || summary?.device_id || '', customer: pair[0] || '', machine: pair[1],
         cursor: append ? state.equipmentHistoryCursor : '', page_size: 100, keyword: $('#equipment-search').value.trim(),
       });
     } catch (_) {
       const legacy = await apiRead('equipment_list');
-      const items = legacy.filter((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase());
+      const legacyHints = equipmentIdentityHints(legacy);
+      const items = legacy.filter((record) => equipmentRecordMatchesDevice(record, pair, legacy, legacyHints));
       result = { items, total: items.length, next_cursor: '' };
     }
     const items = Array.isArray(result) ? result : (result.items || []);
@@ -1904,7 +1940,8 @@ function appendEquipmentProgress() {
   try { pair = JSON.parse($('#equipment-machine-filter').value || ''); } catch (_) { pair = null; }
   if (!pair?.[1]) return;
   const source = state.equipmentFocusedRecords.length ? state.equipmentFocusedRecords : state.equipmentRecords;
-  const latest = source.filter((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase()).filter((record) => !state.equipmentActiveCaseId || (state.equipmentActiveCaseId === '__legacy__' ? !record.case_id : record.case_id === state.equipmentActiveCaseId)).sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a))[0];
+  const sourceHints = equipmentIdentityHints(source);
+  const latest = source.filter((record) => equipmentRecordMatchesDevice(record, pair, source, sourceHints)).filter((record) => !state.equipmentActiveCaseId || (state.equipmentActiveCaseId === '__legacy__' ? !record.case_id : record.case_id === state.equipmentActiveCaseId)).sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a))[0];
   state.equipmentAppendContext = { device_id: latest?.device_id || '', case_id: latest?.status === 'resolved' ? '' : (latest?.case_id || '') };
   $('#equipment-customer').value = pair[0] || '';
   $('#equipment-machine').value = pair[1];
@@ -2064,7 +2101,8 @@ function renderEquipmentList() {
   const keyword = $('#equipment-search').value.trim().toLowerCase();
   const statusFilter = $('#equipment-status-filter').value;
   const sourceRows = state.equipmentFocusedKey === equipmentPairKey(pair) && state.equipmentFocusedRecords.length ? state.equipmentFocusedRecords : state.equipmentRecords;
-  const deviceRows = sourceRows.filter((r) => customerKey(r.customer) === customerKey(pair[0]) && String(r.machine || '').trim().toLowerCase() === String(pair[1] || '').trim().toLowerCase());
+  const sourceHints = equipmentIdentityHints(sourceRows);
+  const deviceRows = sourceRows.filter((record) => equipmentRecordMatchesDevice(record, pair, sourceRows, sourceHints));
   renderEquipmentCaseSwitcher(pair, deviceRows);
   const rows = deviceRows.filter((r) => !state.equipmentActiveCaseId || (state.equipmentActiveCaseId === '__legacy__' ? !r.case_id : r.case_id === state.equipmentActiveCaseId)).filter((r) => (!statusFilter || r.status === statusFilter || (r.status === 'active' && statusFilter === 'recurring')) && equipmentMatchesKeyword(r, keyword) && timelineDateAllowed(r.occurred_at || r.created_at)).sort((a, b) => equipmentRecordTime(b) - equipmentRecordTime(a));
   const visibleRows = rows.slice(0, state.equipmentVisibleLimit);
@@ -2082,7 +2120,7 @@ function renderEquipmentList() {
     const tags = String(r.tags || '').split(',').filter(Boolean).map((tag) => `<span class="item-tag">#${escapeHtml(tag)}</span>`).join(' ');
     const eventLabel = EQUIPMENT_EVENT_LABELS[r.event_type] || (r.status === 'resolved' ? '結案' : '設備紀錄');
     const customerButton = r.customer ? `<button type="button" class="equipment-entity-link" data-equipment-customer="${escapeHtml(r.customer)}"><strong>${escapeHtml(r.customer)}</strong></button>` : '';
-    const deviceButton = r.machine ? `<button type="button" class="equipment-entity-link" data-equipment-device="${escapeHtml(JSON.stringify([r.customer || '', r.machine]))}"><span>${escapeHtml(r.machine)}</span></button>` : '';
+    const deviceButton = r.machine ? `<button type="button" class="equipment-entity-link" data-equipment-device="${escapeHtml(JSON.stringify([r.customer || '', r.machine, r.device_id || pair[2] || '']))}"><span>${escapeHtml(r.machine)}</span></button>` : '';
     return `<article class="equipment-item" data-id="${escapeHtml(r.id)}">
       <div class="equipment-item-head"><div class="equipment-entity-links">${customerButton}${deviceButton}</div><div class="equipment-head-side"><time>${fmtDate(r.occurred_at || r.created_at)}</time><div class="equipment-status-badge status-${equipmentStatus.tone}"><span aria-hidden="true"></span>${equipmentStatus.label}</div></div></div>
       <div class="equipment-event-label">${escapeHtml(eventLabel)}${r.technician ? ` · ${escapeHtml(r.technician)}` : ''}</div>
@@ -2215,9 +2253,9 @@ async function exportEquipmentCsv() {
   const button = $('#btn-equipment-export');
   let pair = null;
   try { pair = JSON.parse($('#equipment-machine-filter').value || ''); } catch (_) { pair = null; }
-  const summary = pair ? state.equipmentRecords.find((record) => customerKey(record.customer) === customerKey(pair[0]) && String(record.machine || '').trim().toLowerCase() === String(pair[1]).trim().toLowerCase()) : null;
+  const summary = pair ? state.equipmentRecords.find((record) => equipmentRecordMatchesDevice(record, pair)) : null;
   const data = {
-    device_id: summary?.device_id || '',
+    device_id: pair?.[2] || summary?.device_id || '',
     customer: pair?.[0] || ($('#equipment-customer-filter').selectedOptions[0]?.textContent || ''),
     machine: pair?.[1] || '',
     status: $('#equipment-status-filter').value,
@@ -2957,7 +2995,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.2.0').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.2.1').catch(() => {});
   }
 
   resetCalendarForm();
