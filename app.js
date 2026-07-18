@@ -1,5 +1,5 @@
 'use strict';
-const APP_VERSION = '1.3.4';
+const APP_VERSION = '1.3.5';
 
 const SHANFANG_COPY = {
   daily: [
@@ -1394,6 +1394,24 @@ function toggleQuickSpace(space) {
   syncSpaceButtons();
 }
 
+function resetRecordCaptureForm() {
+  $('#content').value = '';
+  $('#space').value = '';
+  $('#tags').value = '';
+  $('#due-date').value = '';
+  $('#due-time').value = '';
+  $('#advanced-options').open = false;
+  localStorage.removeItem('whence_last_space');
+  syncSpaceButtons();
+  clearSelectedPhoto();
+  state.important = false;
+  state.urgent = false;
+  $('#btn-important').classList.remove('on');
+  $('#btn-urgent').classList.remove('on');
+  $('#btn-important').setAttribute('aria-pressed', 'false');
+  $('#btn-urgent').setAttribute('aria-pressed', 'false');
+}
+
 async function save() {
   const content = $('#content').value.trim();
   if (!content) { toast('內容不可為空'); return; }
@@ -1425,18 +1443,7 @@ async function save() {
   try {
     const created = await apiPost('create', data);
     upsertLocalRecords(created);
-    $('#content').value = '';
-    $('#tags').value = '';
-    localStorage.setItem('whence_last_space', $('#space').value.trim());
-    $('#due-date').value = '';
-    $('#due-time').value = '';
-    clearSelectedPhoto();
-    state.important = false;
-    state.urgent = false;
-    $('#btn-important').classList.remove('on');
-    $('#btn-urgent').classList.remove('on');
-    $('#btn-important').setAttribute('aria-pressed', 'false');
-    $('#btn-urgent').setAttribute('aria-pressed', 'false');
+    resetRecordCaptureForm();
     toast(state.activeKind === 'task' && data.due_date ? '待辦與行程已建立' : '已儲存 ✓');
     ok = true;
   } catch (err) {
@@ -3005,7 +3012,8 @@ function init() {
   document.addEventListener('visibilitychange', syncCalendarOnResume);
   window.addEventListener?.('pageshow', syncCalendarOnResume);
   setActiveKind(KIND_LABELS[state.activeKind] ? state.activeKind : 'note');
-  $('#space').value = localStorage.getItem('whence_last_space') || '';
+  $('#space').value = '';
+  localStorage.removeItem('whence_last_space');
   syncSpaceButtons();
   document.querySelectorAll('.type-btn[data-kind]').forEach((b) =>
     b.addEventListener('click', () => setActiveKind(b.dataset.kind)));
@@ -3225,7 +3233,7 @@ function init() {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=1.3.4').catch(() => {});
+    navigator.serviceWorker.register('./sw.js?v=1.3.5').catch(() => {});
   }
 
   resetCalendarForm();
